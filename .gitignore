@@ -1,0 +1,20 @@
+# PyCharm
+
+*.idea/*
+
+# pycache
+__pycache__/*
+
+# tensorboard
+runs/*
+
+# notebook checkpoints
+*.ipynb_checkpoints/*
+
+# data
+*data/*
+dblp/*
+
+# miscellaneous
+nohup.out
+
