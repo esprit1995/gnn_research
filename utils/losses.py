@@ -46,7 +46,7 @@ def triplet_loss_type_aware(id_triplets: Tuple[torch.tensor, torch.tensor, torch
     :return: triplet loss
     """
     assert id_triplets[0].shape[0] == id_triplets[1].shape[0] and id_triplets[1].shape[0] == id_triplets[2].shape[0], \
-        "triplet_loss_pure(): triplet lists of unequal length!"
+        "triplet_loss_type_aware(): triplet lists of unequal length!"
 
     # computing regular loss
     batch_size = id_triplets[0].shape[0]

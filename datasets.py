@@ -1,6 +1,7 @@
 import os
 import shutil
-
+import pickle as pkl
+import re
 import torch
 import pandas as pd
 from torch_geometric.data import Data, InMemoryDataset, download_url, extract_zip
@@ -188,3 +189,45 @@ class DBLP_MAGNN(InMemoryDataset):
         paper_term = paper_term[~(paper_term['term_id'].isin(stopword_id_list))].reset_index(drop=True)
         terms = terms[~(terms['term'].isin(stopwords))].reset_index(drop=True)
         return terms, paper_term
+
+class IMDB(InMemoryDataset):
+
+    ggl_drive_url ='https://drive.google.com/uc?export=download&id=1qOZ3QjqWMIIvWjzrIdRe3EA4iKzPi6S5'
+
+    def __init__(self, root, transform=None, pre_transform=None):
+        """
+        :param root: see PyG docs
+        :param transform: see PyG docs
+        :param pre_transform: see PyG docs
+        """
+        super(IMDB, self).__init__(root, transform, pre_transform)
+        self.data, self.slices = torch.load(self.processed_paths[0])
+
+    @property
+    def raw_file_names(self):
+        return ['edges.pkl', 'labels.pkl', 'node_features.pkl']
+
+    @property
+    def processed_file_names(self):
+        return ['data.pt']
+
+    def download(self):
+        shutil.rmtree(self.raw_dir)
+        path = download_url(self.ggl_drive_url, self.raw_dir)
+        extract_zip(path, self.raw_dir)
+        os.unlink(path)
+        for folder in os.listdir(self.raw_dir):
+            if folder != 'IMDB':
+                shutil.rmtree(os.path.join(self.raw_dir, folder))
+        for file in os.listdir(os.path.join(self.raw_dir, "IMDB")):
+            shutil.move(os.path.join(self.raw_dir, "IMDB", file), self.raw_dir)
+        shutil.rmtree(os.path.join(self.raw_dir, "IMDB"))
+
+    def process(self):
+        data_dict = dict()
+        for file in self.raw_file_names:
+            with open(os.path.join(self.raw_dir, file), 'rb') as f:
+                data_dict[re.sub('.pkl', '', file)] = pkl.load(f)
+
+        print(data_dict)
+
