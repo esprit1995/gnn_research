@@ -17,14 +17,21 @@ def dblp_for_rgcn():
     # creating id-type mask
     node_types = ['author', 'paper', 'term']
     node_type_id_dict = {node_types[i]: i for i in range(len(node_types))}
+    n_nodes_dict = dict()
     id_type_mask = list()
     new_index = 0
     for node_type in node_types:
         dataset.node_id_bag_of_words[node_type]['global_id'] = range(new_index, new_index +
                                                                      dataset.node_id_bag_of_words[node_type].shape[0])
         new_index = new_index + dataset.node_id_bag_of_words[node_type].shape[0]
+        n_nodes_dict[node_type] = dataset.node_id_bag_of_words[node_type].shape[0]
         id_type_mask = id_type_mask + [node_type_id_dict[node_type]] * dataset.node_id_bag_of_words[node_type].shape[0]
     id_type_mask = torch.tensor(id_type_mask)
+
+    # creating labels dictionary
+    node_labels = dict()
+    node_labels['author'] = dataset.id_label['author']['label'].tolist()
+
     # creating feature matrix. Dimensionality is inferred from term frame (since it is smallest)
     dimensions = dataset.initial_embeddings['term'][1][1].size
     author_feats = np.array([dataset.initial_embeddings['author'][i][1]
@@ -67,4 +74,4 @@ def dblp_for_rgcn():
     edge_index = torch.tensor([source_nodes, target_nodes])
     edge_type = torch.tensor(np.array([0] * dataset.edge_index_dict[('paper', 'author')].shape[0] +
                                       [1] * dataset.edge_index_dict[('paper', 'term')].shape[0]))
-    return node_type_id_dict, edge_type_id_dict, id_type_mask, node_feature_matrix, edge_index, edge_type
+    return node_type_id_dict, n_nodes_dict, node_labels, edge_type_id_dict, id_type_mask, node_feature_matrix, edge_index, edge_type
