@@ -4,12 +4,13 @@ import pickle as pkl
 import re
 import torch
 import pandas as pd
+import scipy as scp
 from torch_geometric.data import Data, InMemoryDataset, download_url, extract_zip
 from scipy.sparse import load_npz
 import nltk
 from nltk.stem import WordNetLemmatizer
 from nltk.corpus import stopwords as nltk_stopwords
-from sklearn.feature_extraction.stop_words import ENGLISH_STOP_WORDS as sklearn_stopwords
+from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS as sklearn_stopwords
 
 import numpy as np
 
@@ -190,17 +191,21 @@ class DBLP_MAGNN(InMemoryDataset):
         terms = terms[~(terms['term'].isin(stopwords))].reset_index(drop=True)
         return terms, paper_term
 
-class IMDB(InMemoryDataset):
 
-    ggl_drive_url ='https://drive.google.com/uc?export=download&id=1qOZ3QjqWMIIvWjzrIdRe3EA4iKzPi6S5'
+class IMDB_ACM_DBLP(InMemoryDataset):
+    ggl_drive_url = 'https://drive.google.com/uc?export=download&id=1qOZ3QjqWMIIvWjzrIdRe3EA4iKzPi6S5'
 
-    def __init__(self, root, transform=None, pre_transform=None):
+    def __init__(self, root: str, name: str, transform=None, pre_transform=None):
         """
         :param root: see PyG docs
+        :param name: name of the dataset to fetch. must be one of ['DBLP', 'IMDB', 'ACM']
         :param transform: see PyG docs
         :param pre_transform: see PyG docs
         """
-        super(IMDB, self).__init__(root, transform, pre_transform)
+        self.ds_name = name if name in ['DBLP', 'IMDB', 'ACM'] else None
+        if self.ds_name is None:
+            raise ValueError('IMDB_ACM_DBLP.__init__(): name argument invalid!')
+        super(IMDB_ACM_DBLP, self).__init__(root, transform, pre_transform)
         self.data, self.slices = torch.load(self.processed_paths[0])
 
     @property
@@ -217,17 +222,96 @@ class IMDB(InMemoryDataset):
         extract_zip(path, self.raw_dir)
         os.unlink(path)
         for folder in os.listdir(self.raw_dir):
-            if folder != 'IMDB':
+            if folder != self.ds_name:
                 shutil.rmtree(os.path.join(self.raw_dir, folder))
-        for file in os.listdir(os.path.join(self.raw_dir, "IMDB")):
-            shutil.move(os.path.join(self.raw_dir, "IMDB", file), self.raw_dir)
-        shutil.rmtree(os.path.join(self.raw_dir, "IMDB"))
+        for file in os.listdir(os.path.join(self.raw_dir, self.ds_name)):
+            shutil.move(os.path.join(self.raw_dir, self.ds_name, file), self.raw_dir)
+        shutil.rmtree(os.path.join(self.raw_dir, self.ds_name))
 
     def process(self):
         data_dict = dict()
         for file in self.raw_file_names:
             with open(os.path.join(self.raw_dir, file), 'rb') as f:
                 data_dict[re.sub('.pkl', '', file)] = pkl.load(f)
+        node_type_mask = IMDB_ACM_DBLP.infer_type_mask_from_edges(data_dict['edges'])
+        data_list = [Data(node_type_mask=node_type_mask,
+                          node_features=torch.tensor(data_dict['node_features']))]
 
-        print(data_dict)
+        if self.pre_filter is not None:
+            data_list = [data for data in data_list if self.pre_filter(data)]
 
+        if self.pre_transform is not None:
+            data_list = [self.pre_transform(data) for data in data_list]
+
+        data, slices = self.collate(data_list)
+        torch.save((data, slices), self.processed_paths[0])
+
+    @staticmethod
+    def check_interval_overlap(int1, int2):
+        cond1 = (int2[0] <= int1[0] <= int2[1])
+        cond2 = (int2[0] <= int1[1] <= int2[1])
+        cond3 = (int1[0] <= int2[0] and int1[1] >= int2[1])
+        return cond1 or cond2 or cond3
+
+    @staticmethod
+    def merge_tups(tups):
+        return min([x[0] for x in tups]), max([x[1] for x in tups])
+
+    @staticmethod
+    def infer_id_ranges(tups):
+        merged = list()
+        finished = False
+        while not finished:
+            for tup in tups:
+                mask = [IMDB_ACM_DBLP.check_interval_overlap(tup, elem) for elem in tups]
+                merged.append(IMDB_ACM_DBLP.merge_tups(list(np.array(tups)[mask])))
+            merged = list(set(merged))
+            for tup in merged:
+                mask = [IMDB_ACM_DBLP.check_interval_overlap(tup, elem) for elem in merged]
+                true_counts = len([elem for elem in mask if elem == True])
+                if true_counts == 1:
+                    finished = True
+                    continue
+                else:
+                    finished = False
+                    tups = merged
+                    merged = list()
+                    break
+        return sorted(merged, key=lambda tup: tup[0])
+
+    @staticmethod
+    def infer_type_mask_from_edges(edges: scp.sparse.csr.csr_matrix):
+        """
+        the raw data does not contain node type mask. However, it can be inferred from the edges matrix
+        some assumptions (verified):
+        1. shape(edges) = n_edge_types x n_nodes x n_nodes
+        2. each edges[i] stores adjacency matrix for a fixed type of edge
+        3. node ids of the same type nodes go uninterrupted (for instance, expected node type mask
+           resembles [0, 0, ..., 0, 1, ..., 1, 2, ..., 2, ...]
+        :param edges: edges[i] contains a ndarray of edges of fixed type.
+        :return:
+        """
+        num_nodes = edges[1].todense().shape[0]
+        edge_type_ids_dict = dict()
+        for edge_type in range(len(edges)):
+            non_zero_idx1 = list()
+            non_zero_idx2 = list()
+            matrix = np.asarray(edges[edge_type].todense())
+            for i in range(num_nodes):
+                local_non0 = np.nonzero(matrix[i])[0]
+                if local_non0.size > 0:
+                    non_zero_idx2.append(i)
+                non_zero_idx1 = non_zero_idx1 + local_non0.tolist()
+            ids1 = sorted(list(set(non_zero_idx1)))
+            ids2 = sorted(non_zero_idx2)
+            edge_type_ids_dict[edge_type] = ((min(ids1), max(ids1), len(ids1)),
+                                             (min(ids2), max(ids2), len(ids2)))
+        tups = list()
+        for key in edge_type_ids_dict.keys():
+            tups.append(edge_type_ids_dict[key][0])
+            tups.append(edge_type_ids_dict[key][1])
+        tups = IMDB_ACM_DBLP.infer_id_ranges(tups)
+        node_type_mask = list()
+        for i in range(len(tups)):
+            node_type_mask = node_type_mask + [i] * (tups[i][1] - tups[i][0] + 1)
+        return torch.tensor(node_type_mask)
