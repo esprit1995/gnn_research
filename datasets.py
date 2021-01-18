@@ -234,8 +234,16 @@ class IMDB_ACM_DBLP(InMemoryDataset):
             with open(os.path.join(self.raw_dir, file), 'rb') as f:
                 data_dict[re.sub('.pkl', '', file)] = pkl.load(f)
         node_type_mask = IMDB_ACM_DBLP.infer_type_mask_from_edges(data_dict['edges'])
+        edge_index_dict = IMDB_ACM_DBLP.get_edge_index_dict(data_dict['edges'], node_type_mask)
+        train_id_label = torch.tensor(np.array(data_dict['labels'][0]).T)
+        valid_id_label = torch.tensor(np.array(data_dict['labels'][1]).T)
+        test_id_label = torch.tensor(np.array(data_dict['labels'][2]).T)
         data_list = [Data(node_type_mask=node_type_mask,
-                          node_features=torch.tensor(data_dict['node_features']))]
+                          node_features=torch.tensor(data_dict['node_features']),
+                          edge_index_dict=edge_index_dict,
+                          train_id_label=train_id_label,
+                          valid_id_label=valid_id_label,
+                          test_id_label=test_id_label)]
 
         if self.pre_filter is not None:
             data_list = [data for data in data_list if self.pre_filter(data)]
@@ -245,6 +253,17 @@ class IMDB_ACM_DBLP(InMemoryDataset):
 
         data, slices = self.collate(data_list)
         torch.save((data, slices), self.processed_paths[0])
+
+    @staticmethod
+    def get_edge_index_dict(edges: list, node_type_mask):
+        edge_index_dict = dict()
+        for edge_type_idx in range(len(edges)):
+            non_zero_indices = np.nonzero(np.asarray(edges[edge_type_idx].todense()))
+            ntype1 = node_type_mask[non_zero_indices[0][0]].item()
+            ntype2 = node_type_mask[non_zero_indices[1][0]].item()
+            edge_index_dict[(str(ntype1), str(ntype2))] = torch.tensor(non_zero_indices)
+        return edge_index_dict
+
 
     @staticmethod
     def check_interval_overlap(int1, int2):
