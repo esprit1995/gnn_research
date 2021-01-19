@@ -1,15 +1,13 @@
 import torch
 import numpy as np
-import torch_geometric as tg
 from torch_geometric.typing import Adj
-from torch_geometric.utils import structured_negative_sampling
 
 from sklearn.preprocessing import OneHotEncoder
 
 
-def hetergeneous_negative_sampling_naive(edge_index: Adj,
-                                         node_idx_type: torch.Tensor,
-                                         random_seed: int = 0) -> tuple:
+def heterogeneous_negative_sampling_naive(edge_index: Adj,
+                                          node_idx_type: torch.Tensor,
+                                          random_seed: int = 0) -> tuple:
     """
     alteration of torch_geometric.utils.structured_negative_sampling to accommodate for
     heterogeneous graphs

@@ -1,17 +1,17 @@
 import pandas as pd
 import numpy as np
 import torch
-from datasets import DBLP_MAGNN
+from datasets import DBLP_MAGNN, IMDB_ACM_DBLP
 from sklearn.decomposition import PCA
 
 
-def dblp_for_rgcn():
+def DBLP_MAGNN_for_rgcn():
     """
     transform the datasets.DBLP_MAGNN torch_geometric dataset to a
     torch_geometric.nn.conv.RGCNConv - compatible set of data structures
     :return:
     """
-    dataset = DBLP_MAGNN(root="/home/ubuntu/msandal_code/PyG_playground/dblp", use_MAGNN_init_feats=True)[0]
+    dataset = DBLP_MAGNN(root="/home/ubuntu/msandal_code/PyG_playground/data/DBLP_MAGNN", use_MAGNN_init_feats=True)[0]
 
     # reindexing nodes to ensure unique ids;
     # creating id-type mask
@@ -29,8 +29,8 @@ def dblp_for_rgcn():
     id_type_mask = torch.tensor(id_type_mask)
 
     # creating labels dictionary
-    node_labels = dict()
-    node_labels['author'] = dataset.id_label['author']['label'].tolist()
+    node_labels_dict = dict()
+    node_labels_dict['author'] = dataset.id_label['author']['label'].tolist()
 
     # creating feature matrix. Dimensionality is inferred from term frame (since it is smallest)
     dimensions = dataset.initial_embeddings['term'][1][1].size
@@ -74,4 +74,39 @@ def dblp_for_rgcn():
     edge_index = torch.tensor([source_nodes, target_nodes])
     edge_type = torch.tensor(np.array([0] * dataset.edge_index_dict[('paper', 'author')].shape[0] +
                                       [1] * dataset.edge_index_dict[('paper', 'term')].shape[0]))
-    return node_type_id_dict, n_nodes_dict, node_labels, edge_type_id_dict, id_type_mask, node_feature_matrix, edge_index, edge_type
+    return n_nodes_dict, node_labels_dict, id_type_mask, node_feature_matrix, edge_index, edge_type
+
+
+def IMDB_ACM_DBLP_for_rgcn(name: str):
+    """
+    transform the datasets.IMDB_ACM_DBLP torch_geometric dataset to a
+    torch_geometric.nn.conv.RGCNConv - compatible set of data structures
+    :param name: name of the dataset to fetch. must be one of ['ACM', 'DBLP', 'IMDB']
+    :return:
+    """
+    dataset = IMDB_ACM_DBLP(root="/home/ubuntu/msandal_code/PyG_playground/data/IMDB_ACM_DBLP/" + name, name=name)[0]
+
+    # n_nodes_dict
+    node_count_info = pd.Series(dataset['node_type_mask']).value_counts()
+    n_nodes_dict = {str(val): node_count_info.loc[val] for val in node_count_info.index}
+
+    # id_type_mask, node_feature_matrix
+    id_type_mask = dataset['node_type_mask']
+    node_feature_matrix = dataset['node_features']
+
+    # node_labels_dict
+    labeled_type = id_type_mask[dataset['train_id_label'][0][0].item()].item()
+    node_labels_dict = {str(labeled_type) + '_' + ds_part: dataset[ds_part+'_id_label'] for ds_part in ['train', 'valid', 'test']}
+
+    # edge_index, edge_type
+    edge_index = list()
+    edge_type = list()
+    edge_type_counter=0
+    for key in dataset['edge_index_dict'].keys():
+        edge_index.append(dataset['edge_index_dict'][key])
+        edge_type = edge_type + [edge_type_counter]*dataset['edge_index_dict'][key].shape[1]
+        edge_type_counter += 1
+    edge_index = torch.cat(edge_index, dim=1)
+    edge_type = torch.tensor(edge_type)
+
+    return n_nodes_dict, node_labels_dict, id_type_mask, node_feature_matrix, edge_index, edge_type
