@@ -36,7 +36,6 @@ if args.model == 'RGCN':
         loss = triplet_loss_type_aware(triplets, output, id_type_mask, lmbd=args.type_lambda) if args.type_aware_loss \
             else triplet_loss_pure(triplets, output)
         losses.append(loss)
-
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()

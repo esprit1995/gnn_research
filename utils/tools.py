@@ -55,4 +55,4 @@ def node_type_encoding(node_features: np.array, node_type_mask: np.array):
         raise ValueError('node_type_encoding(): node features and node_type_mask have incompatible shapes')
     encoder = OneHotEncoder(sparse=False)
     type_feats = np.asarray(encoder.fit_transform(node_type_mask.reshape(-1, 1)))
-    return np.concatenate((node_features, type_feats), axis=1)
+    return torch.tensor(np.concatenate((node_features, type_feats), axis=1))

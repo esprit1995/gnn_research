@@ -3,6 +3,7 @@ import numpy as np
 import torch
 from datasets import DBLP_MAGNN, IMDB_ACM_DBLP
 from sklearn.decomposition import PCA
+from utils.tools import node_type_encoding
 
 
 def DBLP_MAGNN_for_rgcn():
@@ -92,19 +93,20 @@ def IMDB_ACM_DBLP_for_rgcn(name: str):
 
     # id_type_mask, node_feature_matrix
     id_type_mask = dataset['node_type_mask']
-    node_feature_matrix = dataset['node_features']
+    node_feature_matrix = node_type_encoding(dataset['node_features'].numpy(), id_type_mask.numpy())
 
     # node_labels_dict
     labeled_type = id_type_mask[dataset['train_id_label'][0][0].item()].item()
-    node_labels_dict = {str(labeled_type) + '_' + ds_part: dataset[ds_part+'_id_label'] for ds_part in ['train', 'valid', 'test']}
+    node_labels_dict = {str(labeled_type) + '_' + ds_part: dataset[ds_part + '_id_label'] for ds_part in
+                        ['train', 'valid', 'test']}
 
     # edge_index, edge_type
     edge_index = list()
     edge_type = list()
-    edge_type_counter=0
+    edge_type_counter = 0
     for key in dataset['edge_index_dict'].keys():
         edge_index.append(dataset['edge_index_dict'][key])
-        edge_type = edge_type + [edge_type_counter]*dataset['edge_index_dict'][key].shape[1]
+        edge_type = edge_type + [edge_type_counter] * dataset['edge_index_dict'][key].shape[1]
         edge_type_counter += 1
     edge_index = torch.cat(edge_index, dim=1)
     edge_type = torch.tensor(edge_type)
