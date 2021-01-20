@@ -1,6 +1,8 @@
 import pandas as pd
 import numpy as np
 import torch
+import os
+import pickle
 from datasets import DBLP_MAGNN, IMDB_ACM_DBLP
 from sklearn.decomposition import PCA
 from utils.tools import node_type_encoding
@@ -112,3 +114,50 @@ def IMDB_ACM_DBLP_for_rgcn(name: str):
     edge_type = torch.tensor(edge_type)
 
     return n_nodes_dict, node_labels_dict, id_type_mask, node_feature_matrix, edge_index, edge_type
+
+
+def IMDB_ACM_DBLP_for_gtn(name: str, data_dir: str = '/home/ubuntu/msandal_code/PyG_playground/data/IMDB_ACM_DBLP'):
+    """
+    prepare data structures for GTN architecture
+    https://github.com/seongjunyun/Graph_Transformer_Networks
+    :param name: name of the dataset. must be one of ['ACM', 'IMDB', 'DBLP']
+    :param data_dir: directory where IMDB_ACM_DBLP is stored. If doesn't exist, will be created
+    :return:
+    """
+    if name not in ['ACM', 'IMDB', 'DBLP']:
+        raise ValueError('invalid dataset name: ', name)
+
+    dataset = IMDB_ACM_DBLP(root=os.path.join(data_dir,name), name=name)[0]
+
+    # edge_index, edge_type
+    edge_index = list()
+    edge_type = list()
+    edge_type_counter = 0
+    for key in dataset['edge_index_dict'].keys():
+        edge_index.append(dataset['edge_index_dict'][key])
+        edge_type = edge_type + [edge_type_counter] * dataset['edge_index_dict'][key].shape[1]
+        edge_type_counter += 1
+    edge_index = torch.cat(edge_index, dim=1)
+    edge_type = torch.tensor(edge_type)
+
+    # id_type_mask, node_feature_matrix
+    id_type_mask = dataset['node_type_mask']
+
+    with open(os.path.join(data_dir, name, 'raw', 'node_features.pkl'), 'rb') as f:
+        node_features = pickle.load(f)
+    with open(os.path.join(data_dir, name, 'raw', 'edges.pkl'), 'rb') as f:
+        edges = pickle.load(f)
+    with open(os.path.join(data_dir, name, 'raw', 'labels.pkl'), 'rb') as f:
+        labels = pickle.load(f)
+    num_nodes = edges[0].shape[0]
+    num_classes = torch.max(torch.from_numpy(np.array(labels[0])[:, 1]).type(torch.LongTensor)).item() + 1
+
+    node_features = torch.from_numpy(node_features).type(torch.FloatTensor)
+    for i, edge in enumerate(edges):
+        if i == 0:
+            A = torch.from_numpy(edge.todense()).type(torch.FloatTensor).unsqueeze(-1)
+        else:
+            A = torch.cat([A, torch.from_numpy(edge.todense()).type(torch.FloatTensor).unsqueeze(-1)], dim=-1)
+    A = torch.cat([A, torch.eye(num_nodes).type(torch.FloatTensor).unsqueeze(-1)], dim=-1)
+
+    return A, node_features, num_classes, edge_index, edge_type, id_type_mask
