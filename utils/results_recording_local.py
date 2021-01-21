@@ -9,7 +9,8 @@ from termcolor import cprint
 
 
 def record_experiment_locally(project_root_path: str, experiment_name: str, dataset_name: str,
-                              embeddings: torch.tensor, args: argparse.Namespace, additional_info: str = '', ):
+                              embeddings: torch.tensor, perf_dict: dict, args: argparse.Namespace,
+                              additional_info: str = '', ):
     """
     record the results of an experiment (currently, only the node embeddings for a certain dataset);
     with function parameters fixed, the results will be saved to:
@@ -19,6 +20,7 @@ def record_experiment_locally(project_root_path: str, experiment_name: str, data
     :param experiment_name: name of the experiment. Each experiment gets a folder
     :param dataset_name: name of the dataset
     :param embeddings: node embeddings obtained during the experiment
+    :param perf_dict: dictionary containing the performance metrics of downstream tasks on the produced embeddings
     :param args: arguments from Argparse used to obtain the result
     :param additional_info: additional information that can help identify the results. For instance, could be model-loss combination
     :return:
@@ -39,12 +41,23 @@ def record_experiment_locally(project_root_path: str, experiment_name: str, data
         cprint("Failed to save node embeddings. Exception: " + str(e), color='red', attrs=['bold'])
         return
 
+    # save performance metrics
+    try:
+        with open(os.path.join(project_root_path, "experiment_records", experiment_name, dataset_name,
+                               "perf_metrics_" + str(additional_info) + ".txt"), 'w+') as f:
+            json.dump(perf_dict, f, indent=2)
+    except Exception as e:
+        cprint("Node embeddings saved", color='green')
+        cprint("Failed to save performance metrics. Exception: " + str(e), color='red', attrs=['bold'])
+        return
+
     # save argparse arguments
     try:
         with open(os.path.join(project_root_path, "experiment_records", experiment_name, dataset_name, "argparse_args_" + str(additional_info) + ".txt"), 'w+') as f:
             json.dump(args.__dict__, f, indent=2)
     except Exception as e:
         cprint("Node embeddings saved", color='green')
+        cprint("Performance metrics saved", color='green')
         cprint("Failed to save argparse arguments. Exception: " + str(e), color='red', attrs=['bold'])
         return
     cprint("Results recorded", color='green')
