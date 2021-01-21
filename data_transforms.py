@@ -127,7 +127,7 @@ def IMDB_ACM_DBLP_for_gtn(name: str, data_dir: str = '/home/ubuntu/msandal_code/
     if name not in ['ACM', 'IMDB', 'DBLP']:
         raise ValueError('invalid dataset name: ', name)
 
-    dataset = IMDB_ACM_DBLP(root=os.path.join(data_dir,name), name=name)[0]
+    dataset = IMDB_ACM_DBLP(root=os.path.join(data_dir, name), name=name)[0]
 
     # edge_index, edge_type
     edge_index = list()
