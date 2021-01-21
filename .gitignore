@@ -15,6 +15,7 @@ runs/*
 # data
 *data/*
 dblp/*
+experiment_records/*
 
 # miscellaneous
 nohup.out

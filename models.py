@@ -122,7 +122,7 @@ class GTN(nn.Module):
                 X_tmp = F.relu(self.gcn_conv(X, H[i]))
                 X_ = torch.cat((X_, X_tmp), dim=1)
         X_ = self.linear1(X_)
-        X_ = F.relu(X_)
+        # X_ = F.relu(X_)
         # y = self.linear2(X_[target_x])
         # loss = self.loss(y, target)
         return X_

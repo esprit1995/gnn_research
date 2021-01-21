@@ -44,7 +44,7 @@ def train_rgcn(args):
 
 def train_gtn(args):
     # GTN settings ##########
-    node_dim = 10
+    node_dim = 32
     num_channels = 2
     num_layers = 2
     norm = 'true'
