@@ -1,7 +1,7 @@
 import torch
 import pandas as pd
-from models import RGCN, GTN
-from data_transforms import IMDB_ACM_DBLP_for_rgcn, IMDB_ACM_DBLP_for_gtn
+from models import RGCN, GTN, HAN
+from data_transforms import IMDB_ACM_DBLP_for_rgcn, IMDB_ACM_DBLP_for_gtn, ACM_HAN_for_han
 from utils.tools import heterogeneous_negative_sampling_naive
 from utils.losses import triplet_loss_pure, triplet_loss_type_aware
 
@@ -65,6 +65,44 @@ def train_gtn(args):
         triplets = heterogeneous_negative_sampling_naive(edge_index, id_type_mask, random_seed=args.random_seed)
         loss = triplet_loss_type_aware(triplets, output, id_type_mask, lmbd=args.type_lambda) if args.type_aware_loss \
             else triplet_loss_pure(triplets, output)
+        loss.backward()
+        optimizer.step()
+        print("Epoch: ", epoch, " loss: ", loss)
+
+    return output, id_type_mask
+
+
+def train_han(args):
+    # HAN settings ##########
+    num_heads = 2,
+    dropout = 0
+    out_size = 10
+    hidden_size = 20
+    metapaths = [('pa', 'ap'), ('pf', 'fp')]
+    # #######################
+    if args.dataset == 'ACM_HAN':
+        g, features, labels, num_classes, edge_index_list, id_type_mask = ACM_HAN_for_han()
+    else:
+        raise ValueError("Currently HAN cannot be trained for dataset: ", args.dataset)
+
+    model = HAN(meta_paths=metapaths,
+                in_size=features.shape[1],
+                hidden_size=hidden_size,
+                out_size=out_size,
+                num_heads=num_heads,
+                dropout=dropout).to(args.device)
+    g = g.to(args.device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr,
+                                 weight_decay=args.weight_decay)
+    model.train()
+    for epoch in range(args.epochs):
+        output = model(g, features)
+        meta_triplets = [heterogeneous_negative_sampling_naive(edge_index, id_type_mask, random_seed=args.random_seed)
+                         for edge_index in edge_index_list]
+        triplets = tuple([torch.cat([meta_triplets[i][j] for i in range(len(meta_triplets))]) for j in range(3)])
+        loss = triplet_loss_type_aware(triplets, output, id_type_mask, lmbd=args.type_lambda) if args.type_aware_loss \
+            else triplet_loss_pure(triplets, output)
+        optimizer.zero_grad()
         loss.backward()
         optimizer.step()
         print("Epoch: ", epoch, " loss: ", loss)

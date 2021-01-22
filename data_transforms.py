@@ -1,9 +1,10 @@
 import pandas as pd
 import numpy as np
 import torch
+import dgl
 import os
 import pickle
-from datasets import DBLP_MAGNN, IMDB_ACM_DBLP
+from datasets import DBLP_MAGNN, IMDB_ACM_DBLP, ACM_HAN
 from sklearn.decomposition import PCA
 from utils.tools import node_type_encoding
 
@@ -161,3 +162,14 @@ def IMDB_ACM_DBLP_for_gtn(name: str, data_dir: str = '/home/ubuntu/msandal_code/
     A = torch.cat([A, torch.eye(num_nodes).type(torch.FloatTensor).unsqueeze(-1)], dim=-1)
 
     return A, node_features, num_classes, edge_index, edge_type, id_type_mask
+
+
+def ACM_HAN_for_han(data_dir: str = '/home/ubuntu/msandal_code/PyG_playground/data/ACM_HAN'):
+    dataset = ACM_HAN(root=data_dir)[0]
+    metapaths = [('pa', 'ap'), ('pf', 'fp')]
+    edge_index_list = list()
+    for metapath in metapaths:
+        metagraph = dgl.metapath_reachable_graph(dataset.dgl_hetgraph, metapath=metapath)
+        edge_index_list.append(metagraph.adjacency_matrix(etype=metagraph.etypes[0]).coalesce().indices())
+    id_type_mask = torch.tensor([0]*dataset.features.shape[0])
+    return dataset.dgl_hetgraph, dataset.features, dataset.labels, dataset.num_classes, edge_index_list, id_type_mask

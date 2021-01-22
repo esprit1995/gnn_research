@@ -1,3 +1,5 @@
+import datetime
+
 import torch
 import numpy as np
 from torch_geometric.typing import Adj
@@ -56,3 +58,45 @@ def node_type_encoding(node_features: np.array, node_type_mask: np.array):
     encoder = OneHotEncoder(sparse=False)
     type_feats = np.asarray(encoder.fit_transform(node_type_mask.reshape(-1, 1)))
     return torch.tensor(np.concatenate((node_features, type_feats), axis=1))
+
+
+class EarlyStopping(object):
+    """
+    credits: DGL oficial github examples at
+    https://github.com/dmlc/dgl/blob/master/examples/pytorch/han/utils.py
+    """
+    def __init__(self, patience=10):
+        dt = datetime.datetime.now()
+        self.filename = 'early_stop_{}_{:02d}-{:02d}-{:02d}.pth'.format(
+            dt.date(), dt.hour, dt.minute, dt.second)
+        self.patience = patience
+        self.counter = 0
+        self.best_acc = None
+        self.best_loss = None
+        self.early_stop = False
+
+    def step(self, loss, acc, model):
+        if self.best_loss is None:
+            self.best_acc = acc
+            self.best_loss = loss
+            self.save_checkpoint(model)
+        elif (loss > self.best_loss) and (acc < self.best_acc):
+            self.counter += 1
+            print(f'EarlyStopping counter: {self.counter} out of {self.patience}')
+            if self.counter >= self.patience:
+                self.early_stop = True
+        else:
+            if (loss <= self.best_loss) and (acc >= self.best_acc):
+                self.save_checkpoint(model)
+            self.best_loss = np.min((loss, self.best_loss))
+            self.best_acc = np.max((acc, self.best_acc))
+            self.counter = 0
+        return self.early_stop
+
+    def save_checkpoint(self, model):
+        """Saves model when validation loss decreases."""
+        torch.save(model.state_dict(), self.filename)
+
+    def load_checkpoint(self, model):
+        """Load the latest checkpoint."""
+        model.load_state_dict(torch.load(self.filename))

@@ -6,6 +6,7 @@ from typing import Union, Tuple
 from torch_geometric.typing import OptTensor, Adj
 
 from conv import GTLayer
+from conv import HANLayer
 
 
 class RGCN(nn.Module):
@@ -126,3 +127,21 @@ class GTN(nn.Module):
         # y = self.linear2(X_[target_x])
         # loss = self.loss(y, target)
         return X_
+
+
+class HAN(nn.Module):
+    def __init__(self, meta_paths, in_size, hidden_size, out_size, num_heads, dropout):
+        super(HAN, self).__init__()
+
+        self.layers = nn.ModuleList()
+        self.layers.append(HANLayer(meta_paths, in_size, hidden_size, num_heads[0], dropout))
+        for l in range(1, len(num_heads)):
+            self.layers.append(HANLayer(meta_paths, hidden_size * num_heads[l - 1],
+                                        hidden_size, num_heads[l], dropout))
+        self.predict = nn.Linear(hidden_size * num_heads[-1], out_size)
+
+    def forward(self, g, h):
+        for gnn in self.layers:
+            h = gnn(g, h)
+
+        return self.predict(h)

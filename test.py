@@ -1,7 +1,7 @@
 import os
 import shutil
 import warnings
-from training_routines import train_rgcn, train_gtn
+from training_routines import train_rgcn, train_gtn, train_han
 from utils.arguments import model_run_argparse
 from torch.utils.tensorboard import SummaryWriter
 from downstream_tasks.node_clustering import evaluate_clustering
@@ -19,8 +19,10 @@ writer = SummaryWriter(os.path.join("runs", str(experiment_name)))
 # embeddings are stored in :torch.tensor:: output
 if args.model == 'RGCN':
     output, metadata = train_rgcn(args)
-elif args.model == 'eGTN':
+elif args.model == 'GTN':
     output, metadata = train_gtn(args)
+elif args.model == 'HAN':
+    output, metadata = train_han(args)
 else:
     raise NotImplementedError("No implementation for model name: ", args.model)
 
