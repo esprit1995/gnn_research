@@ -6,6 +6,7 @@ import re
 import torch
 import dgl
 import pandas as pd
+import numpy as np
 import scipy as scp
 import nltk
 
@@ -344,6 +345,7 @@ class ACM_HAN(InMemoryDataset):
     procure ACM dataset from ACM.mat raw matrix as it is in the
     Heterogeneous Graph Attention Network (HAN) paper
     """
+
     def __init__(self, root, transform=None, pre_transform=None):
         """
         :param root: see PyG docs
@@ -368,13 +370,17 @@ class ACM_HAN(InMemoryDataset):
 
     def process(self):
         dgl_hetgraph, features, labels, num_classes, train_idx, val_idx, test_idx, train_mask, \
-            val_mask, test_mask = ACM_HAN.load_raw_acm(os.path.join(self.raw_dir, 'ACM.mat'))
+        val_mask, test_mask = ACM_HAN.load_raw_acm(os.path.join(self.raw_dir, 'ACM.mat'))
+        train_id_label = torch.tensor([np.nonzero(train_mask.numpy())[0],
+                                       labels[train_mask.type(torch.BoolTensor)].numpy()])
+        test_id_label = torch.tensor([np.nonzero(test_mask.numpy())[0],
+                                      labels[test_mask.type(torch.BoolTensor)].numpy()])
         data_list = [Data(dgl_hetgraph=dgl_hetgraph,
                           features=features,
                           labels=labels,
                           num_classes=num_classes,
-                          train_val_test_idx=(train_idx, val_idx, test_idx),
-                          train_val_test_mask=(train_mask, val_mask, test_mask))]
+                          train_id_label=train_id_label,
+                          test_id_label=test_id_label)]
 
         if self.pre_filter is not None:
             data_list = [data for data in data_list if self.pre_filter(data)]

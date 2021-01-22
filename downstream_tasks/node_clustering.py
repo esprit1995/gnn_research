@@ -6,7 +6,7 @@ from sklearn.metrics.cluster import normalized_mutual_info_score
 from sklearn.metrics.cluster import adjusted_rand_score
 from termcolor import cprint
 
-from datasets import IMDB_ACM_DBLP
+from datasets import IMDB_ACM_DBLP, ACM_HAN
 
 
 def evaluate_clustering(args, node_embeddings: torch.tensor):
@@ -19,6 +19,9 @@ def evaluate_clustering(args, node_embeddings: torch.tensor):
     if args.dataset in ['IMDB', 'DBLP', 'ACM']:
         datadir = '/home/ubuntu/msandal_code/PyG_playground/data/IMDB_ACM_DBLP'
         dataset = IMDB_ACM_DBLP(root=os.path.join(datadir, args.dataset), name=args.dataset)[0]
+    elif args.dataset == 'ACM_HAN':
+        datadir = '/home/ubuntu/msandal_code/PyG_playground/data/ACM_HAN'
+        dataset = ACM_HAN(root=datadir)[0]
     else:
         raise NotImplementedError('evaluate_clustering: requested dataset unknown')
 
