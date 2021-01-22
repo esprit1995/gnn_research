@@ -2,12 +2,16 @@ import os
 import shutil
 import pickle as pkl
 import re
+
 import torch
+import dgl
 import pandas as pd
 import scipy as scp
+import nltk
+
+from scipy import io as sio
 from torch_geometric.data import Data, InMemoryDataset, download_url, extract_zip
 from scipy.sparse import load_npz
-import nltk
 from nltk.stem import WordNetLemmatizer
 from nltk.corpus import stopwords as nltk_stopwords
 from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS as sklearn_stopwords
@@ -264,7 +268,6 @@ class IMDB_ACM_DBLP(InMemoryDataset):
             edge_index_dict[(str(ntype1), str(ntype2))] = torch.tensor(non_zero_indices)
         return edge_index_dict
 
-
     @staticmethod
     def check_interval_overlap(int1, int2):
         cond1 = (int2[0] <= int1[0] <= int2[1])
@@ -287,7 +290,7 @@ class IMDB_ACM_DBLP(InMemoryDataset):
             merged = list(set(merged))
             for tup in merged:
                 mask = [IMDB_ACM_DBLP.check_interval_overlap(tup, elem) for elem in merged]
-                true_counts = len([elem for elem in mask if elem == True])
+                true_counts = len([elem for elem in mask if elem is True])
                 if true_counts == 1:
                     finished = True
                     continue
@@ -296,7 +299,7 @@ class IMDB_ACM_DBLP(InMemoryDataset):
                     tups = merged
                     merged = list()
                     break
-        return sorted(merged, key=lambda tup: tup[0])
+        return sorted(merged, key=lambda tup_: tup_[0])
 
     @staticmethod
     def infer_type_mask_from_edges(edges: scp.sparse.csr.csr_matrix):
@@ -334,3 +337,116 @@ class IMDB_ACM_DBLP(InMemoryDataset):
         for i in range(len(tups)):
             node_type_mask = node_type_mask + [i] * (tups[i][1] - tups[i][0] + 1)
         return torch.tensor(node_type_mask)
+
+
+class ACM_HAN(InMemoryDataset):
+    """
+    procure ACM dataset from ACM.mat raw matrix as it is in the
+    Heterogeneous Graph Attention Network (HAN) paper
+    """
+    def __init__(self, root, transform=None, pre_transform=None):
+        """
+        :param root: see PyG docs
+        :param transform: see PyG docs
+        :param pre_transform: see PyG docs
+        """
+        self.github_url = "https://raw.github.com/Jhy1993/HAN/master/data/acm/"
+        super(ACM_HAN, self).__init__(root, transform, pre_transform)
+        self.data, self.slices = torch.load(self.processed_paths[0])
+
+    @property
+    def raw_file_names(self):
+        return ['ACM.mat']
+
+    @property
+    def processed_file_names(self):
+        return ['data.pt']
+
+    def download(self):
+        for filename in self.raw_file_names:
+            _ = download_url(self.github_url + filename, self.raw_dir)
+
+    def process(self):
+        dgl_hetgraph, features, labels, num_classes, train_idx, val_idx, test_idx, train_mask, \
+            val_mask, test_mask = ACM_HAN.load_raw_acm(os.path.join(self.raw_dir, 'ACM.mat'))
+        data_list = [Data(dgl_hetgraph=dgl_hetgraph,
+                          features=features,
+                          labels=labels,
+                          num_classes=num_classes,
+                          train_val_test_idx=(train_idx, val_idx, test_idx),
+                          train_val_test_mask=(train_mask, val_mask, test_mask))]
+
+        if self.pre_filter is not None:
+            data_list = [data for data in data_list if self.pre_filter(data)]
+
+        if self.pre_transform is not None:
+            data_list = [self.pre_transform(data) for data in data_list]
+
+        data, slices = self.collate(data_list)
+        torch.save((data, slices), self.processed_paths[0])
+
+    @staticmethod
+    def load_raw_acm(data_path: str):
+        """
+        credits to DGL's official github page examples:
+        https://github.com/dmlc/dgl/blob/master/examples/pytorch/han/utils.py
+        :param data_path: string indicating the path to ACM.mat file
+        :return:
+        """
+        data = sio.loadmat(data_path)
+        p_vs_l = data['PvsL']  # paper-field?
+        p_vs_a = data['PvsA']  # paper-author
+        p_vs_t = data['PvsT']  # paper-term, bag of words
+        p_vs_c = data['PvsC']  # paper-conference, labels come from that
+
+        # We assign
+        # (1) KDD papers as class 0 (data mining),
+        # (2) SIGMOD and VLDB papers as class 1 (database),
+        # (3) SIGCOMM and MOBICOMM papers as class 2 (communication)
+        conf_ids = [0, 1, 9, 10, 13]
+        label_ids = [0, 1, 2, 2, 1]
+
+        p_vs_c_filter = p_vs_c[:, conf_ids]
+        p_selected = (p_vs_c_filter.sum(1) != 0).A1.nonzero()[0]
+        p_vs_l = p_vs_l[p_selected]
+        p_vs_a = p_vs_a[p_selected]
+        p_vs_t = p_vs_t[p_selected]
+        p_vs_c = p_vs_c[p_selected]
+
+        hg = dgl.heterograph({
+            ('paper', 'pa', 'author'): p_vs_a.nonzero(),
+            ('author', 'ap', 'paper'): p_vs_a.transpose().nonzero(),
+            ('paper', 'pf', 'field'): p_vs_l.nonzero(),
+            ('field', 'fp', 'paper'): p_vs_l.transpose().nonzero()
+        })
+
+        features = torch.FloatTensor(p_vs_t.toarray())
+
+        pc_p, pc_c = p_vs_c.nonzero()
+        labels = np.zeros(len(p_selected), dtype=np.int64)
+        for conf_id, label_id in zip(conf_ids, label_ids):
+            labels[pc_p[pc_c == conf_id]] = label_id
+        labels = torch.LongTensor(labels)
+
+        num_classes = 3
+
+        float_mask = np.zeros(len(pc_p))
+        for conf_id in conf_ids:
+            pc_c_mask = (pc_c == conf_id)
+            float_mask[pc_c_mask] = np.random.permutation(np.linspace(0, 1, pc_c_mask.sum()))
+        train_idx = np.where(float_mask <= 0.2)[0]
+        val_idx = np.where((float_mask > 0.2) & (float_mask <= 0.3))[0]
+        test_idx = np.where(float_mask > 0.3)[0]
+
+        num_nodes = hg.number_of_nodes('paper')
+        train_mask = ACM_HAN.get_binary_mask(num_nodes, train_idx)
+        val_mask = ACM_HAN.get_binary_mask(num_nodes, val_idx)
+        test_mask = ACM_HAN.get_binary_mask(num_nodes, test_idx)
+
+        return hg, features, labels, num_classes, train_idx, val_idx, test_idx, train_mask, val_mask, test_mask
+
+    @staticmethod
+    def get_binary_mask(total_size, indices):
+        mask = torch.zeros(total_size)
+        mask[indices] = 1
+        return mask.byte()
