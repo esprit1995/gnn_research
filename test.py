@@ -1,6 +1,7 @@
 import os
 import shutil
 import warnings
+import torch
 from training_routines import train_rgcn, train_gtn, train_han
 from utils.arguments import model_run_argparse
 from torch.utils.tensorboard import SummaryWriter
@@ -8,9 +9,9 @@ from downstream_tasks.node_clustering import evaluate_clustering
 from downstream_tasks.node_classification import evaluate_classification
 from utils.results_recording_local import  record_experiment_locally
 
-experiment_name = 'testing_results_recording'
+experiment_name = 'ACM_RGCN_100epochs_type_unaware'
 args = model_run_argparse()
-
+torch.manual_seed(args.random_seed)
 # tensorboard: initialize writer; clear the experiment directory if it exists
 if os.path.exists(os.path.join("runs", str(experiment_name))):
     shutil.rmtree(os.path.join("runs", str(experiment_name)))

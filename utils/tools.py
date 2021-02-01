@@ -8,17 +8,14 @@ from sklearn.preprocessing import OneHotEncoder
 
 
 def heterogeneous_negative_sampling_naive(edge_index: Adj,
-                                          node_idx_type: torch.Tensor,
-                                          random_seed: int = 0) -> tuple:
+                                          node_idx_type: torch.Tensor) -> tuple:
     """
     alteration of torch_geometric.utils.structured_negative_sampling to accommodate for
     heterogeneous graphs
     :param edge_index: edge index of the graph/batch
     :param node_idx_type: tensor, node_id_type[i] = type of the node with id = i
-    :param random_seed: reproducibility
     :return: tensor [3xn_edges] containing node (central, positive, negative) triplets
     """
-    torch.manual_seed(random_seed)
     positive_node_types = list(set([elem.item() for elem in node_idx_type[edge_index[1]]]))
     negative_nodes = torch.ones(edge_index.shape[1]) * (-1)
     for pos_node_type in positive_node_types:
