@@ -291,7 +291,7 @@ class IMDB_ACM_DBLP(InMemoryDataset):
             merged = list(set(merged))
             for tup in merged:
                 mask = [IMDB_ACM_DBLP.check_interval_overlap(tup, elem) for elem in merged]
-                true_counts = len([elem for elem in mask if elem is True])
+                true_counts = len([elem for elem in mask if elem == True])
                 if true_counts == 1:
                     finished = True
                     continue
