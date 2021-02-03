@@ -2,6 +2,7 @@ import os
 import shutil
 import pickle as pkl
 import re
+import requests
 
 import torch
 import dgl
@@ -10,14 +11,15 @@ import numpy as np
 import scipy as scp
 import nltk
 
+from termcolor import cprint
+from pathlib import Path
+
 from scipy import io as sio
 from torch_geometric.data import Data, InMemoryDataset, download_url, extract_zip
 from scipy.sparse import load_npz
 from nltk.stem import WordNetLemmatizer
 from nltk.corpus import stopwords as nltk_stopwords
 from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS as sklearn_stopwords
-
-import numpy as np
 
 
 class DBLP_MAGNN(InMemoryDataset):
@@ -456,3 +458,183 @@ class ACM_HAN(InMemoryDataset):
         mask = torch.zeros(total_size)
         mask[indices] = 1
         return mask.byte()
+
+
+class HNE_DATASETS(InMemoryDataset):
+    """
+    provides access to the datasets described in the survey article
+    "Heterogeneous Network Representation Learning: A Unified Framework
+    With Survey And Benchmark"
+    Datasets: PubMed, Yelp, DBLP, Freebase
+    """
+    yelp_id = "1pS78jCtnAnlAQfcfJMkWnJ2utInDu91k"
+    dblp_id = "1nrGb7eEQj7h5YC5kv65hcrtIhr7l03AI"
+    freebase_id = "15gdrbv9l7luEFHq3YdAkeWYldHcqEjG9"
+    pubmed_id = "1ZEi2sTaZ2bk8cQwyCxtlwuWJsAq9N-Cl"
+
+    def __init__(self, root, name, transform=None, pre_transform=None):
+        """
+        :param root: see PyG docs
+        :param name: name of the dataset to procure. Must be one of: ["dblp", "yelp", "freebase", "pubmed"]
+        :param transform: see PyG docs
+        :param pre_transform: see PyG docs
+        """
+        if not os.path.exists(root):
+            Path(root).mkdir(parents=True, exist_ok=True)
+        self.name = name
+        super(HNE_DATASETS, self).__init__(root, transform, pre_transform)
+        self.data, self.slices = torch.load(self.processed_paths[0])
+
+    @property
+    def raw_file_names(self):
+        return ['node.dat', 'link.dat', 'label.dat',
+                'link.dat.test', 'label.dat.test',
+                'meta.dat', 'info.dat',
+                'record.dat']
+
+    @property
+    def processed_file_names(self):
+        return ['data.pt']
+
+    def download(self):
+        cprint('Downloading zip file from ggdrive...', color='blue', attrs=['bold'])
+        if str(self.name).lower() == 'yelp':
+            HNE_DATASETS.download_file_from_google_drive(self.yelp_id, os.path.join(self.raw_dir, 'yelp.zip'))
+            zip_path = os.path.join(self.raw_dir, 'yelp.zip')
+        elif str(self.name).lower() == 'dblp':
+            HNE_DATASETS.download_file_from_google_drive(self.dblp_id, os.path.join(self.raw_dir, 'dblp.zip'))
+            zip_path = os.path.join(self.raw_dir, 'dblp.zip')
+        elif str(self.name).lower() == 'freebase':
+            HNE_DATASETS.download_file_from_google_drive(self.freebase_id, os.path.join(self.raw_dir, 'freebase.zip'))
+            zip_path = os.path.join(self.raw_dir, 'freebase.zip')
+        elif str(self.name).lower() == 'pubmed':
+            HNE_DATASETS.download_file_from_google_drive(self.pubmed_id, os.path.join(self.raw_dir, 'pubmed.zip'))
+            zip_path = os.path.join(self.raw_dir, 'pubmed.zip')
+        else:
+            raise NotImplementedError("Requested dataset not available:", self.name)
+
+        extract_zip(zip_path, self.raw_dir)
+        os.unlink(zip_path)
+        datadir = os.path.join(self.raw_dir, os.listdir(self.raw_dir)[0])
+        for file in os.listdir(datadir):
+            shutil.move(os.path.join(datadir, file), self.raw_dir)
+        shutil.rmtree(datadir)
+
+    def process(self):
+        attributed = ['dblp', 'pubmed']
+
+        # retrieve node information
+        node_ids = list()
+        node_types = list()
+        node_feats = list()
+        file = open(os.path.join(self.raw_dir, 'node.dat'), 'r')
+        for line in file:
+            line = line[:-1].split('\t')
+            node_ids.append(int(line[0]))
+            node_types.append(int(line[2]))
+            if self.name in attributed:
+                node_feats.append([float(elem) for elem in line[3].split(',')])
+            else:
+                pass
+
+        # retrieve link information
+        link_id_source = list()
+        link_id_target = list()
+        link_types = list()
+        link_weights = list()
+        file = open(os.path.join(self.raw_dir, 'link.dat'), 'r')
+        for line in file:
+            line = line[:-1].split('\t')
+            link_id_source.append(int(line[0]))
+            link_id_target.append(int(line[1]))
+            link_types.append(int(line[2]))
+            link_weights.append(float(line[3]))
+        edge_index = [link_id_source, link_id_target]
+
+        # retrieve label information
+        labeling_node_id = list()
+        labeling_node_label = list()
+        file = open(os.path.join(self.raw_dir, 'label.dat'), 'r')
+        for line in file:
+            line = line[:-1].split('\t')
+            labeling_node_id.append(int(line[0]))
+            labeling_node_label.append(int(line[3]))
+        labeling = [labeling_node_id, labeling_node_label]
+
+        # retrieve label testing info
+        test_label_ids = list()
+        test_label_labels = list()
+        file = open(os.path.join(self.raw_dir, 'label.dat.test'), 'r')
+        for line in file:
+            line = line[:-1].split('\t')
+            test_label_ids.append(int(line[0]))
+            test_label_labels.append(int(line[3]))
+        labeling_test = [test_label_ids, test_label_labels]
+
+        # retrieve link testing info
+        linked_nodes_test = list()
+        unlinked_nodes_test = list()
+        file = open(os.path.join(self.raw_dir, 'link.dat.test'), 'r')
+        for line in file:
+            line = line[:-1].split('\t')
+            if int(line[2]) == 1:
+                linked_nodes_test.append((line[0], line[1]))
+            elif int(line[2]) == 0:
+                unlinked_nodes_test.append((line[0], line[1]))
+            else:
+                cprint('HNE_DATASETS link test parsing warning: unexpected item encountered: ' + str(line[2]),
+                       color='yellow')
+        linked_nodes_test = [[int(elem[0]) for elem in linked_nodes_test],
+                             [int(elem[1]) for elem in linked_nodes_test]]
+        unlinked_nodes_test = [[int(elem[0]) for elem in unlinked_nodes_test],
+                               [int(elem[1]) for elem in unlinked_nodes_test]]
+
+        data_list = [Data(node_ids=torch.LongTensor(node_ids),
+                          node_types=torch.IntTensor(node_types),
+                          node_features=torch.FloatTensor([np.array(elem) for elem in node_feats]),
+                          edge_index=torch.LongTensor([np.array(elem) for elem in edge_index]),
+                          edge_types=torch.IntTensor(link_types),
+                          edge_weights=torch.FloatTensor(link_weights),
+                          node_id_to_label=torch.LongTensor(labeling),
+                          node_id_to_label_test=torch.LongTensor([np.array(elem) for elem in labeling_test]),
+                          link_test_id_pairs_positive=torch.LongTensor(linked_nodes_test),
+                          link_test_id_pairs_negative=torch.LongTensor(unlinked_nodes_test))]
+
+        if self.pre_filter is not None:
+            data_list = [data for data in data_list if self.pre_filter(data)]
+
+        if self.pre_transform is not None:
+            data_list = [self.pre_transform(data) for data in data_list]
+
+        data, slices = self.collate(data_list)
+        torch.save((data, slices), self.processed_paths[0])
+
+    @staticmethod
+    def download_file_from_google_drive(id_, destination):
+        def get_confirm_token(response_):
+            for key, value in response_.cookies.items():
+                if key.startswith('download_warning'):
+                    return value
+
+            return None
+
+        def save_response_content(response__, destination__):
+            CHUNK_SIZE = 32768
+
+            with open(destination__, "wb") as f:
+                for chunk in response__.iter_content(CHUNK_SIZE):
+                    if chunk:  # filter out keep-alive new chunks
+                        f.write(chunk)
+
+        URL = "https://docs.google.com/uc?export=download"
+
+        session = requests.Session()
+
+        response = session.get(URL, params={'id': id_}, stream=True)
+        token = get_confirm_token(response)
+
+        if token:
+            params = {'id': id_, 'confirm': token}
+            response = session.get(URL, params=params, stream=True)
+
+        save_response_content(response, destination)
