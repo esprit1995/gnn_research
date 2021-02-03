@@ -11,7 +11,8 @@ from utils.results_recording_local import record_experiment_locally
 
 args = model_run_argparse()
 special_notes = ''
-experiment_name = '_'.join([args.dataset, args.model,
+experiment_name = '_'.join([args.dataset,
+                            args.model,
                             str(args.epochs), 'epochs',
                             str(args.type_aware_loss), 'typeAwareness',
                             str(args.type_lambda), 'lambda',
