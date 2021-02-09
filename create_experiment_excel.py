@@ -85,10 +85,11 @@ def collect_model_results(model_name: str, experiments_path: str,
     return result_final.reset_index(drop=True)
 
 
-warnings.simplefilter('ignore')
-args = parser.parse_args()
-experiment_df = collect_model_results(args.model, args.experiments_path)
-if not os.path.isdir(args.save_to):
-    Path(args.save_to).mkdir(parents=True, exist_ok=True)
-experiment_df.to_excel(os.path.join(args.save_to, args.save_filename))
-warnings.simplefilter('default')
+if __name__ == "__main__":
+    warnings.simplefilter('ignore')
+    args = parser.parse_args()
+    experiment_df = collect_model_results(args.model, args.experiments_path)
+    if not os.path.isdir(args.save_to):
+        Path(args.save_to).mkdir(parents=True, exist_ok=True)
+    experiment_df.to_excel(os.path.join(args.save_to, args.save_filename))
+    warnings.simplefilter('default')

@@ -8,7 +8,7 @@ from pathlib import Path
 from termcolor import cprint
 
 
-def record_experiment_locally(project_root_path: str, experiment_name: str, dataset_name: str,
+def record_experiment_locally(project_root_path: str, experiment_name: str,
                               embeddings: torch.tensor, perf_dict: dict, args: argparse.Namespace,
                               additional_info: str = '', ):
     """
@@ -18,7 +18,6 @@ def record_experiment_locally(project_root_path: str, experiment_name: str, data
     If the said experiment on the said dataset had already been run before, the results will be overwritten
     :param project_root_path: root directory of the project
     :param experiment_name: name of the experiment. Each experiment gets a folder
-    :param dataset_name: name of the dataset
     :param embeddings: node embeddings obtained during the experiment
     :param perf_dict: dictionary containing the performance metrics of downstream tasks on the produced embeddings
     :param args: arguments from Argparse used to obtain the result
@@ -26,16 +25,16 @@ def record_experiment_locally(project_root_path: str, experiment_name: str, data
     :return:
     """
     # if the path does not exist, create it
-    if not os.path.exists(os.path.join(project_root_path, "experiment_records",  experiment_name, dataset_name)):
-        Path(os.path.join(project_root_path, "experiment_records", experiment_name,  dataset_name)).mkdir(parents=True, exist_ok=True)
+    if not os.path.exists(os.path.join(project_root_path, "experiment_records",  experiment_name)):
+        Path(os.path.join(project_root_path, "experiment_records", experiment_name)).mkdir(parents=True, exist_ok=True)
 
     # if the path exists, empty the directory
-    for filename in os.listdir(os.path.join(project_root_path, "experiment_records", experiment_name, dataset_name)):
-        os.unlink(os.path.join(project_root_path, "experiment_records", experiment_name, dataset_name, filename))
+    for filename in os.listdir(os.path.join(project_root_path, "experiment_records", experiment_name)):
+        os.unlink(os.path.join(project_root_path, "experiment_records", experiment_name, filename))
 
     # save node embeddings
     try:
-        np.savez(os.path.join(project_root_path, "experiment_records", experiment_name, dataset_name, "node_embeddings_" + str(additional_info) + ".npz"),
+        np.savez(os.path.join(project_root_path, "experiment_records", experiment_name, "node_embeddings_" + str(additional_info) + ".npz"),
                  embeddings.detach().numpy())
     except Exception as e:
         cprint("Failed to save node embeddings. Exception: " + str(e), color='red', attrs=['bold'])
@@ -43,7 +42,7 @@ def record_experiment_locally(project_root_path: str, experiment_name: str, data
 
     # save performance metrics
     try:
-        with open(os.path.join(project_root_path, "experiment_records", experiment_name, dataset_name,
+        with open(os.path.join(project_root_path, "experiment_records", experiment_name,
                                "perf_metrics_" + str(additional_info) + ".txt"), 'w+') as f:
             json.dump(perf_dict, f, indent=2)
     except Exception as e:
@@ -53,7 +52,7 @@ def record_experiment_locally(project_root_path: str, experiment_name: str, data
 
     # save argparse arguments
     try:
-        with open(os.path.join(project_root_path, "experiment_records", experiment_name, dataset_name, "argparse_args_" + str(additional_info) + ".txt"), 'w+') as f:
+        with open(os.path.join(project_root_path, "experiment_records", experiment_name, "argparse_args_" + str(additional_info) + ".txt"), 'w+') as f:
             json.dump(args.__dict__, f, indent=2)
     except Exception as e:
         cprint("Node embeddings saved", color='green')
