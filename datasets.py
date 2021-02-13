@@ -20,6 +20,7 @@ from scipy.sparse import load_npz
 from nltk.stem import WordNetLemmatizer
 from nltk.corpus import stopwords as nltk_stopwords
 from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS as sklearn_stopwords
+from sklearn.model_selection import train_test_split
 
 
 class DBLP_MAGNN(InMemoryDataset):
@@ -201,14 +202,18 @@ class DBLP_MAGNN(InMemoryDataset):
 
 class IMDB_ACM_DBLP(InMemoryDataset):
     ggl_drive_url = 'https://drive.google.com/uc?export=download&id=1qOZ3QjqWMIIvWjzrIdRe3EA4iKzPi6S5'
+    dblp_additional = 'https://raw.github.com/cynricfu/MAGNN/master/data/raw/DBLP/'
 
-    def __init__(self, root: str, name: str, transform=None, pre_transform=None):
+    def __init__(self, root: str, name: str, multi_type_labels: bool = False,
+                 transform=None, pre_transform=None):
         """
         :param root: see PyG docs
         :param name: name of the dataset to fetch. must be one of ['DBLP', 'IMDB', 'ACM']
+        :param multi_type_labels: whether to infer additional labels for multi-type clustering tasks (for DBLP, ACM)
         :param transform: see PyG docs
         :param pre_transform: see PyG docs
         """
+        self.multi_type_labels = multi_type_labels
         self.ds_name = name if name in ['DBLP', 'IMDB', 'ACM'] else None
         if self.ds_name is None:
             raise ValueError('IMDB_ACM_DBLP.__init__(): name argument invalid!')
@@ -217,7 +222,12 @@ class IMDB_ACM_DBLP(InMemoryDataset):
 
     @property
     def raw_file_names(self):
-        return ['edges.pkl', 'labels.pkl', 'node_features.pkl']
+        if self.ds_name != 'DBLP':
+            return ['edges.pkl', 'labels.pkl', 'node_features.pkl']
+        else:
+            return ['edges.pkl', 'labels.pkl', 'node_features.pkl',
+                    'author_label.txt', 'conf_label.txt',
+                    'paper_conf.txt', 'paper_author.txt']
 
     @property
     def processed_file_names(self):
@@ -234,10 +244,16 @@ class IMDB_ACM_DBLP(InMemoryDataset):
         for file in os.listdir(os.path.join(self.raw_dir, self.ds_name)):
             shutil.move(os.path.join(self.raw_dir, self.ds_name, file), self.raw_dir)
         shutil.rmtree(os.path.join(self.raw_dir, self.ds_name))
+        if self.ds_name == 'DBLP':
+            for file in self.raw_file_names:
+                if '.pkl' not in file:
+                    _ = download_url(self.dblp_additional + file, self.raw_dir)
 
     def process(self):
         data_dict = dict()
         for file in self.raw_file_names:
+            if '.pkl' not in file:
+                continue
             with open(os.path.join(self.raw_dir, file), 'rb') as f:
                 data_dict[re.sub('.pkl', '', file)] = pkl.load(f)
         node_type_mask = IMDB_ACM_DBLP.infer_type_mask_from_edges(data_dict['edges'])
@@ -245,6 +261,63 @@ class IMDB_ACM_DBLP(InMemoryDataset):
         train_id_label = torch.tensor(np.array(data_dict['labels'][0]).T)
         valid_id_label = torch.tensor(np.array(data_dict['labels'][1]).T)
         test_id_label = torch.tensor(np.array(data_dict['labels'][2]).T)
+
+        # infer additional labels for multi-type clustering tasks
+        if self.multi_type_labels:
+            if self.ds_name == 'ACM':
+                paper_author = pd.DataFrame(columns=['paper', 'author'],
+                                            data=edge_index_dict[('0', '1')].numpy().T)
+                paper_label = pd.DataFrame(columns=['paper', 'label'],
+                                           data=np.vstack([train_id_label.numpy().T,
+                                                           valid_id_label.numpy().T,
+                                                           test_id_label.numpy().T]))
+                author_label = paper_author.merge(paper_label, on='paper', how='inner').drop(columns=['paper'])
+                author_label = author_label.groupby(['author']) \
+                    .agg({'label': lambda labels: labels.value_counts().index[0]}) \
+                    .reset_index(drop=False)
+                node_id_node_label = np.vstack([author_label.to_numpy(),
+                                                train_id_label.numpy().T,
+                                                valid_id_label.numpy().T,
+                                                test_id_label.numpy().T])
+            if self.ds_name == 'DBLP':
+                paper_author = pd.DataFrame(columns=['paper', 'author'],
+                                            data=IMDB_ACM_DBLP.read_2colInt_txt(open(os.path.join(self.raw_dir, 'paper_author.txt'), 'r')))
+                paper_conf = pd.DataFrame(columns=['paper', 'conf'],
+                                          data=IMDB_ACM_DBLP.read_2colInt_txt(open(os.path.join(self.raw_dir, 'paper_conf.txt'), 'r')))
+                author_label = pd.DataFrame(columns=['author', 'label'],
+                                            data=IMDB_ACM_DBLP.read_2colInt_txt(open(os.path.join(self.raw_dir, 'author_label.txt'), 'r')))
+                conf_label = pd.DataFrame(columns=['conf', 'label'],
+                                          data=IMDB_ACM_DBLP.read_2colInt_txt(open(os.path.join(self.raw_dir, 'conf_label.txt'), 'r')))
+
+                paper_author = paper_author[paper_author['author'].isin(author_label['author'].tolist())]
+                paper_conf = paper_conf[paper_conf['paper'].isin(paper_author['paper'].tolist())]
+                paper_conf = paper_conf.groupby(['conf'])['paper'].count().to_frame().reset_index()
+                paper_conf_local = pd.DataFrame(columns=['paper', 'conf_local'], data=edge_index_dict[('1', '2')].numpy().T)
+                paper_conf_local = paper_conf_local.groupby(['conf_local'])['paper'].count().to_frame().reset_index()
+                conf_local_conf = paper_conf.merge(paper_conf_local, on='paper', how='inner')[['conf_local', 'conf']]
+                conf_local_label = conf_local_conf.merge(conf_label, on='conf', how='inner')[['conf_local', 'label']]
+
+                local_conf_paper = pd.DataFrame(columns=['paper', 'conf_local'],
+                                                data=edge_index_dict[('1', '2')].numpy().T)
+                paper_label = local_conf_paper.merge(conf_local_label, on='conf_local', how='inner')[['paper', 'label']]
+                node_id_node_label = np.vstack([paper_label.to_numpy(),
+                                                train_id_label.numpy().T,
+                                                valid_id_label.numpy().T,
+                                                test_id_label.numpy().T])
+
+            train_id_label, test_id_label = train_test_split(node_id_node_label,
+                                                             test_size=0.7,
+                                                             shuffle=True,
+                                                             stratify=node_id_node_label[:, 1],
+                                                             random_state=0)
+            train_id_label, valid_id_label = train_test_split(train_id_label,
+                                                              test_size=0.3,
+                                                              shuffle=True,
+                                                              stratify=train_id_label[:, 1],
+                                                              random_state=0)
+            train_id_label, valid_id_label, test_id_label = torch.from_numpy(train_id_label).T, \
+                                                            torch.from_numpy(valid_id_label).T, \
+                                                            torch.from_numpy(test_id_label).T
         data_list = [Data(node_type_mask=node_type_mask,
                           node_features=torch.tensor(data_dict['node_features']),
                           edge_index_dict=edge_index_dict,
@@ -270,6 +343,15 @@ class IMDB_ACM_DBLP(InMemoryDataset):
             ntype2 = node_type_mask[non_zero_indices[1][0]].item()
             edge_index_dict[(str(ntype1), str(ntype2))] = torch.tensor(non_zero_indices)
         return edge_index_dict
+
+    @staticmethod
+    def read_2colInt_txt(file):
+        res = list()
+        for line in file:
+            elems = str(line).split('\t')
+            val1, val2 = int(elems[0]), int(elems[1])
+            res.append([val1, val2])
+        return np.array(res)
 
     @staticmethod
     def check_interval_overlap(int1, int2):
