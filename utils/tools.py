@@ -2,9 +2,12 @@ import datetime
 
 import torch
 import numpy as np
+import multiprocessing as mp
 from torch_geometric.typing import Adj
 
 from sklearn.preprocessing import OneHotEncoder
+
+from typing import Dict, Tuple, Any
 
 
 def heterogeneous_negative_sampling_naive(edge_index: Adj,
@@ -57,11 +60,110 @@ def node_type_encoding(node_features: np.array, node_type_mask: np.array):
     return torch.tensor(np.concatenate((node_features, type_feats), axis=1))
 
 
+# ############################################################
+# ####### Graphlet sampling: metapath-like graphlets #########
+# ############################################################
+
+
+def edge_index_to_adj_dict(edge_index: Dict, node_type_mask: torch.tensor, between_types: Tuple) -> np.array:
+    """
+    creates a numpy adjacency matrix between the specified node types based on the passed edge_index
+    :param edge_index: a dict containing edges. edge_index[(type_1, type_2)] contains edges between
+                       nodes of types type_1, type_2
+    :param node_type_mask: numpy array containing node types, node_types[i] = type of node with index i.
+    :param between_types: tuple (type_1, type_2); should be on of the keys of edge_index
+    :return: adjacency dictionary between (type_1, type_2) in numpy format
+    """
+    if between_types not in list(edge_index.keys()):
+        raise ValueError("edge_index_to_adj_dict(): type pair not found in the edge index")
+    typed_edge_index = edge_index[between_types].numpy()
+    head_type_range = np.sort(np.where(node_type_mask == int(between_types[0]))[0])
+    adj_dict = dict()
+    for head_type_idx in head_type_range:
+        if head_type_idx in typed_edge_index[0]:
+            adj_dict[str(head_type_idx)] = typed_edge_index[1][np.where(typed_edge_index[0] == head_type_idx)]
+        else:
+            adj_dict[str(head_type_idx)] = np.array([])
+    return adj_dict
+
+
+def make_step(current: int, adj_dict) -> int:
+    try:
+        if adj_dict[str(current)].size > 0:
+            return np.random.choice(adj_dict[str(current)])
+        else:
+            return -1
+    except Exception as e:
+        raise e
+
+
+def sample_instance(metapath_, adj_dicts_, starting_points_, random_seed) -> tuple:
+    metapath_instance = list()
+    np.random.seed(random_seed)
+    metapath_current = np.random.choice(starting_points_)
+    metapath_instance.append(metapath_current)
+    for nstep in range(1, len(metapath_)):
+        edge_type = (metapath_[nstep - 1], metapath_[nstep])
+        try:
+            metapath_current = make_step(metapath_current, adj_dicts_[edge_type])
+        except Exception as e:
+            print('Sampling process failed due to exception: ' + str(e))
+            raise e
+        if metapath_current == -1:
+            return None
+        metapath_instance.append(metapath_current)
+    return tuple(metapath_instance)
+
+
+def sample_metapath_instances(metapath: Tuple, n: int, pyg_graph_info: Any, nworkers: int = 4,
+                              parallel: bool = False) -> list:
+    """
+    sample a predefined number of metapath instances in a given graph
+    :param metapath: a tuple describing a metapath. For instance, ('0', '1', '2', '1', '0')
+    :param n: how many instances to randomly sample from a graph
+    :param pyg_graph_info: variable containing at least 'edge_index_dictionary', 'node_type_mask'
+    :param nworkers: parallel processing param
+    :param parallel: whether to use parallel processing
+    :return: a list of sampled metapath instances
+    """
+    np.random.seed(69)
+    # get all possible starting points for the given metapath template
+    starting_points = np.where(pyg_graph_info['node_type_mask'].numpy() == int(metapath[0]))[0]
+
+    # get adjacency dictionaries needed for the given metapath template
+    adj_dicts = dict()
+    for nedge in range(1, len(metapath)):
+        adj_dicts[(metapath[nedge - 1], metapath[nedge])] = edge_index_to_adj_dict(pyg_graph_info['edge_index_dict'],
+                                                                                   pyg_graph_info['node_type_mask'],
+                                                                                   (metapath[nedge - 1],
+                                                                                    metapath[nedge]))
+
+    # instance sampling
+    if parallel:
+        pool = mp.Pool(processes=nworkers)
+        results = [pool.apply_async(sample_instance, args=(metapath, adj_dicts, starting_points, i)) for i in range(n)]
+        mp_instances = [p.get() for p in results]
+        return mp_instances
+    else:
+        results = list()
+        for i in range(n):
+            instance = sample_instance(metapath, adj_dicts, starting_points, i)
+            if instance is not None:
+                results.append(sample_instance(metapath, adj_dicts, starting_points, i))
+        return results
+
+
+# ############################################################
+# ############################################################
+# ############################################################
+
+
 class EarlyStopping(object):
     """
     credits: DGL oficial github examples at
     https://github.com/dmlc/dgl/blob/master/examples/pytorch/han/utils.py
     """
+
     def __init__(self, patience=10):
         dt = datetime.datetime.now()
         self.filename = 'early_stop_{}_{:02d}-{:02d}-{:02d}.pth'.format(
