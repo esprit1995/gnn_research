@@ -1,5 +1,5 @@
 import datetime
-
+import os
 import torch
 import numpy as np
 import multiprocessing as mp
@@ -8,7 +8,7 @@ from torch_geometric.typing import Adj
 from sklearn.preprocessing import OneHotEncoder
 
 from typing import Dict, Tuple, Any
-
+from datasets import IMDB_ACM_DBLP
 
 def heterogeneous_negative_sampling_naive(edge_index: Adj,
                                           node_idx_type: torch.Tensor) -> tuple:
@@ -153,7 +153,7 @@ def sample_metapath_instances(metapath: Tuple, n: int, pyg_graph_info: Any,
     :param nworkers: parallel processing param
     :param parallel: whether to use parallel processing
     :param negative_samples: whether to sample positive or negative instances
-    :return: a list of sampled metapath instances
+    :return: a list of sampled metapath instances. only unique instances are kept
     """
     np.random.seed(69)
     # get all possible starting points for the given metapath template
@@ -178,15 +178,30 @@ def sample_metapath_instances(metapath: Tuple, n: int, pyg_graph_info: Any,
         pool = mp.Pool(processes=nworkers)
         results = [pool.apply_async(sample_instance, args=(metapath, adj_dicts, starting_points, i)) for i in range(n)]
         mp_instances = [p.get() for p in results]
-        return mp_instances
+        return list(set(mp_instances))
     else:
         results = list()
         for i in range(n):
             instance = sample_instance(metapath, adj_dicts, starting_points, i)
             if instance is not None:
                 results.append(sample_instance(metapath, adj_dicts, starting_points, i))
-        return results
+        return list(set(results))
 
+
+def IMDB_DBLP_ACM_metapath_instance_sampler(name: str, metapath: Tuple, n: int, negative_samples: bool = False,
+                                            root: str="/home/ubuntu/msandal_code/PyG_playground/data/IMDB_ACM_DBLP") -> list:
+    """
+    sampler wrapper for IMDB_DBLP_ACM dataset
+    :param name: name of the dataset to get samples for
+    :param metapath: tuple containing metapath template
+    :param n: how many instances to sample
+    :param root: path to the directory that contains data (or where it will be dowloaded)
+    :return: list of tuples - metapath instances
+    """
+    ds = IMDB_ACM_DBLP(root= os.path.join(root, name), name=name,
+                       multi_type_labels=True)[0]
+    results = sample_metapath_instances(metapath, n, ds, negative_samples=negative_samples )
+    return results
 
 # ############################################################
 # ############################################################
