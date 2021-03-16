@@ -65,14 +65,14 @@ def node_type_encoding(node_features: np.array, node_type_mask: np.array):
 # ############################################################
 
 
-def edge_index_to_adj_dict(edge_index: Dict, node_type_mask: torch.tensor, between_types: Tuple) -> np.array:
+def edge_index_to_adj_dict(edge_index: Dict, node_type_mask: torch.tensor, between_types: Tuple) -> Dict:
     """
-    creates a numpy adjacency matrix between the specified node types based on the passed edge_index
+    creates a adjacency dictionary between the specified node types based on the passed edge_index
     :param edge_index: a dict containing edges. edge_index[(type_1, type_2)] contains edges between
                        nodes of types type_1, type_2
     :param node_type_mask: numpy array containing node types, node_types[i] = type of node with index i.
     :param between_types: tuple (type_1, type_2); should be on of the keys of edge_index
-    :return: adjacency dictionary between (type_1, type_2) in numpy format
+    :return: adjacency dictionary between (type_1, type_2)
     """
     if between_types not in list(edge_index.keys()):
         raise ValueError("edge_index_to_adj_dict(): type pair not found in the edge index")
@@ -85,6 +85,33 @@ def edge_index_to_adj_dict(edge_index: Dict, node_type_mask: torch.tensor, betwe
         else:
             adj_dict[str(head_type_idx)] = np.array([])
     return adj_dict
+
+
+def edge_index_to_neg_adj_dict(edge_index: Dict, node_type_mask: torch.tensor, between_types: Tuple) -> Dict:
+    """
+    creates a negative adjacency dictionary between the specified node types based on the passed edge_index
+    :param edge_index: a dict containing edges. edge_index[(type_1, type_2)] contains edges between
+                       nodes of types type_1, type_2
+    :param node_type_mask: numpy array containing node types, node_types[i] = type of node with index i.
+    :param between_types: tuple (type_1, type_2); should be on of the keys of edge_index
+    :return: negative adjacency dictionary between (type_1, type_2)
+    """
+    if between_types not in list(edge_index.keys()):
+        raise ValueError("edge_index_to_neg_adj_dict(): type pair not found in the edge index")
+
+    typed_edge_index = edge_index[between_types].numpy()
+    head_type_range = np.sort(np.where(node_type_mask == int(between_types[0]))[0])
+    tail_type_range = np.sort(np.where(node_type_mask == int(between_types[1]))[0])
+    neg_adj_dict = dict()
+
+    for head_type_idx in head_type_range:
+        if head_type_idx in typed_edge_index[0]:
+            positive_edges = typed_edge_index[1][np.where(typed_edge_index[0] == head_type_idx)].tolist()
+            negative_edges = np.array(list(set(tail_type_range.tolist()).difference(set(positive_edges))))
+            neg_adj_dict[str(head_type_idx)] = negative_edges
+        else:
+            neg_adj_dict[str(head_type_idx)] = tail_type_range
+    return neg_adj_dict
 
 
 def make_step(current: int, adj_dict) -> int:
@@ -115,8 +142,9 @@ def sample_instance(metapath_, adj_dicts_, starting_points_, random_seed) -> tup
     return tuple(metapath_instance)
 
 
-def sample_metapath_instances(metapath: Tuple, n: int, pyg_graph_info: Any, nworkers: int = 4,
-                              parallel: bool = False) -> list:
+def sample_metapath_instances(metapath: Tuple, n: int, pyg_graph_info: Any,
+                              nworkers: int = 4, parallel: bool = False,
+                              negative_samples: bool = False) -> list:
     """
     sample a predefined number of metapath instances in a given graph
     :param metapath: a tuple describing a metapath. For instance, ('0', '1', '2', '1', '0')
@@ -124,6 +152,7 @@ def sample_metapath_instances(metapath: Tuple, n: int, pyg_graph_info: Any, nwor
     :param pyg_graph_info: variable containing at least 'edge_index_dictionary', 'node_type_mask'
     :param nworkers: parallel processing param
     :param parallel: whether to use parallel processing
+    :param negative_samples: whether to sample positive or negative instances
     :return: a list of sampled metapath instances
     """
     np.random.seed(69)
@@ -133,10 +162,16 @@ def sample_metapath_instances(metapath: Tuple, n: int, pyg_graph_info: Any, nwor
     # get adjacency dictionaries needed for the given metapath template
     adj_dicts = dict()
     for nedge in range(1, len(metapath)):
-        adj_dicts[(metapath[nedge - 1], metapath[nedge])] = edge_index_to_adj_dict(pyg_graph_info['edge_index_dict'],
-                                                                                   pyg_graph_info['node_type_mask'],
-                                                                                   (metapath[nedge - 1],
-                                                                                    metapath[nedge]))
+        if not negative_samples:
+            adj_dicts[(metapath[nedge - 1], metapath[nedge])] = edge_index_to_adj_dict(pyg_graph_info['edge_index_dict'],
+                                                                                       pyg_graph_info['node_type_mask'],
+                                                                                       (metapath[nedge - 1],
+                                                                                        metapath[nedge]))
+        else:
+            adj_dicts[(metapath[nedge - 1], metapath[nedge])] = edge_index_to_neg_adj_dict(pyg_graph_info['edge_index_dict'],
+                                                                                           pyg_graph_info['node_type_mask'],
+                                                                                           (metapath[nedge - 1],
+                                                                                            metapath[nedge]))
 
     # instance sampling
     if parallel:
