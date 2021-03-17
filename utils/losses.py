@@ -87,12 +87,17 @@ def push_pull_metapath_instance_loss(pos_instance: list, neg_instance: list,
     path_length = len(pos_instance[0])
     pos_tensor = torch.tensor(pos_instance)
     neg_tensor = torch.tensor(neg_instance)
+    embed_dim = node_embeddings.shape[1]
     # computing individual dot products
-    left_part_pos = torch.vstack((path_length - 1) * [node_embeddings[pos_tensor[:, 0]]])
-    left_part_neg = torch.vstack((path_length - 1) * [node_embeddings[neg_tensor[:, 0]]])
+    left_part_pos = torch.repeat_interleave(node_embeddings[pos_tensor[:, 0]], path_length-1, dim=0).reshape(-1, embed_dim)
+    left_part_neg = torch.repeat_interleave(node_embeddings[neg_tensor[:, 0]], path_length-1, dim=0).reshape(-1, embed_dim)
     for i in range(1, path_length):
-        left_part_pos = torch.vstack([left_part_pos] + (path_length - 1 - i) * [node_embeddings[pos_tensor[:, i]]])
-        left_part_neg = torch.vstack([left_part_neg] + (path_length - 1 - i) * [node_embeddings[neg_tensor[:, i]]])
+        left_part_pos = torch.vstack([left_part_pos,
+                                      torch.repeat_interleave(node_embeddings[pos_tensor[:, i]],
+                                                              path_length - 1 - i, dim=0).reshape(-1, embed_dim)])
+        left_part_neg = torch.vstack([left_part_neg,
+                                      torch.repeat_interleave(node_embeddings[neg_tensor[:, i]],
+                                                              path_length - 1 - i, dim=0).reshape(-1, embed_dim)])
 
     right_part_pos = torch.vstack([node_embeddings[pos_tensor[:, 1:].reshape(-1)]])
     right_part_neg = torch.vstack([node_embeddings[neg_tensor[:, 1:].reshape(-1)]])

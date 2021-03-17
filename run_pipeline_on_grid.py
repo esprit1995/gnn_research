@@ -3,7 +3,7 @@ import warnings
 import torch.multiprocessing as mp
 from termcolor import cprint
 from pathlib import Path
-from test import run_pipeline
+from run_pipeline import run_pipeline
 from create_experiment_excel import collect_model_results
 from utils.arguments import model_run_argparse
 
