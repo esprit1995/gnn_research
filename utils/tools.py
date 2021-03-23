@@ -117,7 +117,7 @@ def edge_index_to_neg_adj_dict(edge_index: Dict, node_type_mask: torch.tensor, b
 
 def make_step(current: int, adj_dict) -> int:
     try:
-        if adj_dict[str(current)].size > 0:
+        if adj_dict[str(int(current))].size > 0:
             return np.random.choice(adj_dict[str(current)])
         else:
             return -1
@@ -189,6 +189,67 @@ def sample_metapath_instances(metapath: Tuple, n: int, pyg_graph_info: Any,
             if instance is not None:
                 results.append(sample_instance(metapath, adj_dicts, starting_points, i))
         return list(set(results))
+
+
+def corrupt_positive_metapath_instance(mpinstance: tuple,
+                                       mptemplate: tuple,
+                                       positions: tuple,
+                                       adj_dicts: dict,
+                                       neg_adj_dicts: dict,
+                                       node_type_mask: torch.tensor,
+                                       method: str = 'random'):
+    """
+    corrupt positive metapath instance by replacing the nodes indicated by __positions__ argument
+    in one of the 2 ways: replace with random negatives, replace with part of another metapath instance
+    :param mpinstance: a metapath instance, a tuple containing node ids
+    :param mptemplate: a metapath template, a tuple like ('1', '2', '1')
+    :param positions: positions where to corrupt the instance, tuple (min_index, max_index).
+                      a) if min_index == max_index, corrupt in just one spot
+                      b) else, corrupt between min_index and max_index inclusively
+    :param adj_dicts: precomputed adjacency dictionaries
+    :param neg_adj_dicts: precomputed negative adjacency dictionaries
+    :param node_type_mask: tensor encoding node types
+    :param method: 'random' or 'crossover'
+    :return: tuple - corrupted mptemplate instance or None in case of problems
+    """
+    assert positions[1] < len(mptemplate) or positions[0] > 0, \
+        'corrupt_positive_metapath_instance(): invalid positions argument, out of range'
+    corrupted_instance = list(mpinstance)
+
+    # corrupt with just some random nodes
+    if method == 'random':
+        for indx in range(positions[0], positions[1] + 1):
+            if indx == 0:
+                candidates = np.where(node_type_mask.numpy() == int(mptemplate[indx]))[0]
+                corrupted_instance[indx] = np.random.choice(
+                    np.delete(np.argwhere(candidates == mpinstance[0]),
+                              candidates,
+                              0))
+            else:
+                transition_type = (mptemplate[indx - 1], mptemplate[indx])
+                corrupted_instance[indx] = make_step(mpinstance[indx - 1],
+                                                     neg_adj_dicts[transition_type])
+
+    # corrupt by doing a crossover with another positive instance
+    elif method == 'crossover':
+        for indx in range(positions[0], positions[1] + 1):
+            if indx == 0:
+                candidates = np.where(node_type_mask.numpy() == int(mptemplate[indx]))[0]
+                corrupted_instance[indx] = np.random.choice(
+                    np.delete(np.argwhere(candidates == mpinstance[0]),
+                              candidates,
+                              0))
+            elif indx == positions[0]:
+                transition_type = (mptemplate[indx - 1], mptemplate[indx])
+                corrupted_instance[indx] = make_step(mpinstance[indx - 1],
+                                                     neg_adj_dicts[transition_type])
+            else:
+                transition_type = (mptemplate[indx - 1], mptemplate[indx])
+                corrupted_instance[indx] = make_step(corrupted_instance[indx - 1],
+                                                     adj_dicts[transition_type])
+    else:
+        raise NotImplementedError('corrupt_positive_metapath_instance(): requested corruption method unimplemented')
+    return tuple(corrupted_instance)
 
 
 def IMDB_DBLP_ACM_metapath_instance_sampler(name: str, metapath: Tuple, n: int, negative_samples: bool = False,
