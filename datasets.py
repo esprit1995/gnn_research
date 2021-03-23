@@ -204,15 +204,18 @@ class IMDB_ACM_DBLP(InMemoryDataset):
     ggl_drive_url = 'https://drive.google.com/uc?export=download&id=1qOZ3QjqWMIIvWjzrIdRe3EA4iKzPi6S5'
     dblp_additional = 'https://raw.github.com/cynricfu/MAGNN/master/data/raw/DBLP/'
 
-    def __init__(self, root: str, name: str, multi_type_labels: bool = False,
+    def __init__(self, root: str, name: str, multi_type_labels: bool = False, redownload: bool = False,
                  transform=None, pre_transform=None):
         """
         :param root: see PyG docs
         :param name: name of the dataset to fetch. must be one of ['DBLP', 'IMDB', 'ACM']
         :param multi_type_labels: whether to infer additional labels for multi-type clustering tasks (for DBLP, ACM)
+        :param redownload: whether to redownload/reprocess the data from scratch
         :param transform: see PyG docs
         :param pre_transform: see PyG docs
         """
+        if redownload and os.path.exists(root):
+            shutil.rmtree(root)
         self.multi_type_labels = multi_type_labels
         self.ds_name = name if name in ['DBLP', 'IMDB', 'ACM'] else None
         if self.ds_name is None:

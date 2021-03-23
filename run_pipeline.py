@@ -2,6 +2,8 @@ import os
 import shutil
 import warnings
 import torch
+from datetime import datetime
+
 from training_routines import train_rgcn, train_gtn, train_han
 from utils.arguments import model_run_argparse
 from torch.utils.tensorboard import SummaryWriter
@@ -9,18 +11,9 @@ from downstream_tasks.node_clustering import evaluate_clustering
 from downstream_tasks.node_classification import evaluate_classification
 from utils.results_recording_local import record_experiment_locally
 
-args = model_run_argparse()
-special_notes = ''
-experiment_name = '_'.join([args.dataset,
-                            args.model,
-                            str(args.epochs), 'epochs',
-                            str(args.type_aware_loss), 'typeAwareness',
-                            str(args.type_lambda), 'lambda',
-                            str(args.random_seed), 'rs',
-                            special_notes])
-
 
 def run_pipeline(args_):
+    print(experiment_name)
     torch.manual_seed(args_.random_seed)
 
     # tensorboard: initialize writer; clear the experiment directory if it exists
@@ -31,7 +24,7 @@ def run_pipeline(args_):
     # model training: obtain node embeddings of a given dataset by a give architecture
     # embeddings are stored in :torch.tensor:: output
     if args_.model == 'RGCN':
-        output, metadata = train_rgcn(args_)
+        output, metadata_ids, metadata_labels = train_rgcn(args_)
     elif args_.model == 'GTN':
         output, metadata = train_gtn(args_)
     elif args_.model == 'HAN':
@@ -39,7 +32,7 @@ def run_pipeline(args_):
     else:
         raise NotImplementedError("No implementation for model name: ", args_.model)
 
-    writer.add_embedding(output, metadata=metadata)
+    writer.add_embedding(output[metadata_ids], metadata=metadata_labels)
     writer.flush()
     writer.close()
 
@@ -64,8 +57,9 @@ if __name__ == "__main__":
     experiment_name = '_'.join([args.dataset,
                                 args.model,
                                 str(args.epochs), 'epochs',
-                                str(args.type_aware_loss), 'typeAwareness',
+                                str(args.cocluster_loss), 'coclusterLoss',
                                 str(args.type_lambda), 'lambda',
                                 str(args.random_seed), 'rs',
+                                datetime.now().strftime("%d_%m_%Y_%H:%M:%S"),
                                 special_notes])
     run_pipeline(args)

@@ -1,6 +1,14 @@
 import argparse
 
 
+def str2bool(string):
+    trues = ['1', 'true', 'True', 'yes', 'Yes']
+    if str(string) in trues:
+        return True
+    else:
+        return False
+
+
 def model_run_argparse():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, default='ACM',
@@ -13,6 +21,10 @@ def model_run_argparse():
                         help='reproducibility: seed for random generators. Default 10')
     parser.add_argument('--type_aware_loss', action='store_true',
                         help='whether to use type aware loss. Flag')
+    parser.add_argument('--cocluster_loss', action='store_true',
+                        help='whether to use additional co-clustering loss')
+    parser.add_argument('--multitype_labels', type=str2bool, default=True,
+                        help='whether to use multitype labels for ACM/DBLP')
     parser.add_argument('--type_lambda', type=float, default=1,
                         help='factor of the additional type loss. Only has effect if --type_aware_loss flag is set. Default 1')
     parser.add_argument('--lr', type=float, default=0.005,

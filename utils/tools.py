@@ -10,6 +10,7 @@ from sklearn.preprocessing import OneHotEncoder
 from typing import Dict, Tuple, Any
 from datasets import IMDB_ACM_DBLP
 
+
 def heterogeneous_negative_sampling_naive(edge_index: Adj,
                                           node_idx_type: torch.Tensor) -> tuple:
     """
@@ -163,15 +164,17 @@ def sample_metapath_instances(metapath: Tuple, n: int, pyg_graph_info: Any,
     adj_dicts = dict()
     for nedge in range(1, len(metapath)):
         if not negative_samples:
-            adj_dicts[(metapath[nedge - 1], metapath[nedge])] = edge_index_to_adj_dict(pyg_graph_info['edge_index_dict'],
-                                                                                       pyg_graph_info['node_type_mask'],
-                                                                                       (metapath[nedge - 1],
-                                                                                        metapath[nedge]))
+            adj_dicts[(metapath[nedge - 1], metapath[nedge])] = edge_index_to_adj_dict(
+                pyg_graph_info['edge_index_dict'],
+                pyg_graph_info['node_type_mask'],
+                (metapath[nedge - 1],
+                 metapath[nedge]))
         else:
-            adj_dicts[(metapath[nedge - 1], metapath[nedge])] = edge_index_to_neg_adj_dict(pyg_graph_info['edge_index_dict'],
-                                                                                           pyg_graph_info['node_type_mask'],
-                                                                                           (metapath[nedge - 1],
-                                                                                            metapath[nedge]))
+            adj_dicts[(metapath[nedge - 1], metapath[nedge])] = edge_index_to_neg_adj_dict(
+                pyg_graph_info['edge_index_dict'],
+                pyg_graph_info['node_type_mask'],
+                (metapath[nedge - 1],
+                 metapath[nedge]))
 
     # instance sampling
     if parallel:
@@ -189,7 +192,7 @@ def sample_metapath_instances(metapath: Tuple, n: int, pyg_graph_info: Any,
 
 
 def IMDB_DBLP_ACM_metapath_instance_sampler(name: str, metapath: Tuple, n: int, negative_samples: bool = False,
-                                            root: str="/home/ubuntu/msandal_code/PyG_playground/data/IMDB_ACM_DBLP") -> list:
+                                            root: str = "/home/ubuntu/msandal_code/PyG_playground/data/IMDB_ACM_DBLP") -> list:
     """
     sampler wrapper for IMDB_DBLP_ACM dataset
     :param name: name of the dataset to get samples for
@@ -198,10 +201,11 @@ def IMDB_DBLP_ACM_metapath_instance_sampler(name: str, metapath: Tuple, n: int, 
     :param root: path to the directory that contains data (or where it will be dowloaded)
     :return: list of tuples - metapath instances
     """
-    ds = IMDB_ACM_DBLP(root= os.path.join(root, name), name=name,
+    ds = IMDB_ACM_DBLP(root=os.path.join(root, name), name=name,
                        multi_type_labels=True)[0]
-    results = sample_metapath_instances(metapath, n, ds, negative_samples=negative_samples )
+    results = sample_metapath_instances(metapath, n, ds, negative_samples=negative_samples)
     return results
+
 
 # ############################################################
 # ############################################################
@@ -249,3 +253,22 @@ class EarlyStopping(object):
     def load_checkpoint(self, model):
         """Load the latest checkpoint."""
         model.load_state_dict(torch.load(self.filename))
+
+
+# ############################################################
+# ############        Miscellaneous           ################
+# ############################################################
+
+def label_dict_to_metadata(label_dict: dict):
+    """
+    dictionary is expected to contain node ids and their labels
+    :param label_dict: {'key': [[node ids], [labels]]
+    :return:
+    """
+    all_keys = [elem for elem in list(label_dict.keys()) if 'test' in elem]
+    all_ids = label_dict[all_keys[0]][0]
+    all_labels = label_dict[all_keys[0]][1]
+    for idx in range(1, len(all_keys)):
+        all_ids = torch.cat([all_ids, label_dict[all_keys[idx]][0]])
+        all_labels = torch.cat([all_labels, label_dict[all_keys[idx]][1]])
+    return all_ids, all_labels

@@ -81,14 +81,18 @@ def DBLP_MAGNN_for_rgcn():
     return n_nodes_dict, node_labels_dict, id_type_mask, node_feature_matrix, edge_index, edge_type
 
 
-def IMDB_ACM_DBLP_for_rgcn(name: str):
+def IMDB_ACM_DBLP_for_rgcn(name: str, args):
     """
     transform the datasets.IMDB_ACM_DBLP torch_geometric dataset to a
     torch_geometric.nn.conv.RGCNConv - compatible set of data structures
     :param name: name of the dataset to fetch. must be one of ['ACM', 'DBLP', 'IMDB']
+    :param args: run arguments
     :return:
     """
-    dataset = IMDB_ACM_DBLP(root="/home/ubuntu/msandal_code/PyG_playground/data/IMDB_ACM_DBLP/" + name, name=name)[0]
+    dataset = IMDB_ACM_DBLP(root="/home/ubuntu/msandal_code/PyG_playground/data/IMDB_ACM_DBLP/" + name,
+                            name=name,
+                            multi_type_labels=args.multitype_labels,
+                            redownload=True)[0]
 
     # n_nodes_dict
     node_count_info = pd.Series(dataset['node_type_mask']).value_counts()

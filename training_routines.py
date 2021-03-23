@@ -2,7 +2,7 @@ import torch
 import pandas as pd
 from models import RGCN, GTN, HAN
 from data_transforms import IMDB_ACM_DBLP_for_rgcn, IMDB_ACM_DBLP_for_gtn, ACM_HAN_for_han
-from utils.tools import heterogeneous_negative_sampling_naive, IMDB_DBLP_ACM_metapath_instance_sampler
+from utils.tools import heterogeneous_negative_sampling_naive, IMDB_DBLP_ACM_metapath_instance_sampler, label_dict_to_metadata
 from utils.losses import triplet_loss_pure, triplet_loss_type_aware, push_pull_metapath_instance_loss
 
 
@@ -11,13 +11,14 @@ def train_rgcn(args):
     output_dim = 50
     hidden_dim = 50
     num_layers = 3
+    coclustering_metapath = ('0', '1', '0', '2')
     # #######################
     n_node_dict, node_label_dict, id_type_mask, node_feature_matrix, edge_index, edge_type = IMDB_ACM_DBLP_for_rgcn(
-        name=args.dataset)
-    neg_instances = IMDB_DBLP_ACM_metapath_instance_sampler(name=args.dataset, metapath=('0', '1', '0', '2'),
-                                                            n=1000, negative_samples=True)
-    pos_instances = IMDB_DBLP_ACM_metapath_instance_sampler(name=args.dataset, metapath=('0', '1', '0', '2'),
-                                                            n=1000, negative_samples=False)
+        args.dataset, args)
+    neg_instances = IMDB_DBLP_ACM_metapath_instance_sampler(name=args.dataset, metapath=coclustering_metapath,
+                                                            n=10000, negative_samples=True)
+    pos_instances = IMDB_DBLP_ACM_metapath_instance_sampler(name=args.dataset, metapath=coclustering_metapath,
+                                                            n=10000, negative_samples=False)
     print('Data transformed!')
 
     model = RGCN(input_dim=node_feature_matrix.shape[1],
@@ -35,11 +36,9 @@ def train_rgcn(args):
         triplets = heterogeneous_negative_sampling_naive(edge_index, id_type_mask)
         # loss = triplet_loss_type_aware(triplets, output, id_type_mask, lmbd=args.type_lambda) if args.type_aware_loss \
         #     else triplet_loss_pure(triplets, output)
-        loss = triplet_loss_pure(triplets, output) + args.type_lambda * push_pull_metapath_instance_loss(pos_instances,
-                                                                                                         neg_instances,
-                                                                                                         output) \
-            if args.type_aware_loss \
-            else triplet_loss_pure(triplets, output)
+        loss = triplet_loss_pure(triplets, output)
+        if args.cocluster_loss:
+            loss = loss + args.type_lambda*push_pull_metapath_instance_loss(pos_instances, neg_instances, output)
 
         losses.append(loss)
         optimizer.zero_grad()
@@ -48,8 +47,8 @@ def train_rgcn(args):
 
         if epoch % 5 == 0:
             print("Epoch: ", epoch, " loss: ", loss)
-
-    return output, id_type_mask
+    all_ids, all_labels = label_dict_to_metadata(node_label_dict)
+    return output, all_ids, all_labels
 
 
 def train_gtn(args):
