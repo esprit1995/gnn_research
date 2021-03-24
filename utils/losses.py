@@ -74,39 +74,56 @@ def triplet_loss_type_aware(id_triplets: Tuple[torch.tensor, torch.tensor, torch
     return normal_loss + lmbd * type_loss
 
 
-def push_pull_metapath_instance_loss(pos_instance: list, neg_instance: list,
-                                     node_embeddings: torch.tensor):
+def push_pull_metapath_instance_loss(pos_instances: list, corrupted_instances: list,
+                                     corrupted_positions: tuple, node_embeddings: torch.tensor):
     """
     compute the push-pull loss (logsigmoid loss) over the given metapath instances.
     assumes that positive and negative metapath instances have the same template
-    :param pos_instance: list of tuples containing positive metapath instances
-    :param neg_instance: list of typles containing negative metapath instances
+    :param pos_instances: list of tuples containing positive metapath instances
+    :param corrupted_instances: list of tuples containing corrupted metapath instances
+    :param corrupted_positions: tuple (min_idx, max_idx) indicating indices at which the nodes had been corrupted
+                                !!!MUST BE THE SAME FOR ALL CORRUPTED INSTANCES!!! Corrupting positive instances in
+                                different positions calls for the computation of a separate push-pull loss!
     :param node_embeddings: current embeddings of the nodes
     :return: push-pull loss
     """
-    path_length = len(pos_instance[0])
-    pos_tensor = torch.tensor(pos_instance)
-    neg_tensor = torch.tensor(neg_instance)
+    path_length = len(pos_instances[0])
     embed_dim = node_embeddings.shape[1]
+
+    n_corrupted = corrupted_positions[1] - corrupted_positions[0] + 1
+    n_normal = path_length - n_corrupted
+
+    # ----- computing loss contribution from the corrupted instances
+    neg_tensor = torch.tensor(corrupted_instances)
+    corrupted_nodes = neg_tensor[:, corrupted_positions[0]:(corrupted_positions[1] + 1)]
+    normal_nodes = neg_tensor[:, [elem for elem in range(neg_tensor.shape[1]) \
+                                  if elem < corrupted_positions[0] or elem > corrupted_positions[1]]]
+    # prepare tensors for computing dot product: every normal node vs every corrupted node
+    corrupted_nodes = torch.repeat_interleave(corrupted_nodes, n_normal, 1).reshape(-1)
+    normal_nodes = torch.repeat_interleave(normal_nodes, n_corrupted, 0).reshape(-1)
+    left_part_neg = node_embeddings[corrupted_nodes]
+    right_part_neg = node_embeddings[normal_nodes]
+    out_n = F.logsigmoid(
+        -torch.bmm(left_part_neg.view(n_corrupted*n_normal, 1, -1),
+                   right_part_neg.view(n_corrupted*n_normal, -1, 1)))
+
+    # ----- computing loss contribution from the positive instances
+    pos_tensor = torch.tensor(pos_instances)
     # computing individual dot products
-    left_part_pos = torch.repeat_interleave(node_embeddings[pos_tensor[:, 0]], path_length-1, dim=0).reshape(-1, embed_dim)
-    left_part_neg = torch.repeat_interleave(node_embeddings[neg_tensor[:, 0]], path_length-1, dim=0).reshape(-1, embed_dim)
+    left_part_pos = torch.repeat_interleave(node_embeddings[pos_tensor[:, 0]], path_length - 1, dim=0).reshape(-1,
+                                                                                                               embed_dim)
     for i in range(1, path_length):
         left_part_pos = torch.vstack([left_part_pos,
                                       torch.repeat_interleave(node_embeddings[pos_tensor[:, i]],
                                                               path_length - 1 - i, dim=0).reshape(-1, embed_dim)])
-        left_part_neg = torch.vstack([left_part_neg,
-                                      torch.repeat_interleave(node_embeddings[neg_tensor[:, i]],
-                                                              path_length - 1 - i, dim=0).reshape(-1, embed_dim)])
 
     right_part_pos = torch.vstack([node_embeddings[pos_tensor[:, 1:].reshape(-1)]])
-    right_part_neg = torch.vstack([node_embeddings[neg_tensor[:, 1:].reshape(-1)]])
     for i in range(1, path_length - 1):
         right_part_pos = torch.vstack([right_part_pos] + [node_embeddings[pos_tensor[:, 1 + i:].reshape(-1)]])
-        right_part_neg = torch.vstack([right_part_neg] + [node_embeddings[neg_tensor[:, 1 + i:].reshape(-1)]])
 
-    out_p = F.logsigmoid(torch.bmm(left_part_pos.view(int(path_length * (path_length - 1) / 2) * len(pos_instance), 1, -1),
-                                   right_part_pos.view(int(path_length * (path_length - 1) / 2) * len(pos_instance), -1, 1)))
-    out_n = F.logsigmoid(-torch.bmm(left_part_neg.view(int(path_length * (path_length - 1) / 2) * len(neg_instance), 1, -1),
-                                    right_part_neg.view(int(path_length * (path_length - 1) / 2) * len(neg_instance), -1, 1)))
+    out_p = F.logsigmoid(
+        torch.bmm(left_part_pos.view(int(path_length * (path_length - 1) / 2) * len(pos_instances), 1, -1),
+                  right_part_pos.view(int(path_length * (path_length - 1) / 2) * len(pos_instances), -1, 1)))
+
+    # ----- putting the contributions together and returning
     return -out_p.mean() - out_n.mean()
