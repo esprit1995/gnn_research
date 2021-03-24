@@ -12,13 +12,16 @@ def train_rgcn(args):
     hidden_dim = 50
     num_layers = 3
     coclustering_metapath = ('0', '1', '0', '2')
+    corruption_position = (1,2)
     # #######################
     n_node_dict, node_label_dict, id_type_mask, node_feature_matrix, edge_index, edge_type = IMDB_ACM_DBLP_for_rgcn(
         args.dataset, args)
-    neg_instances = IMDB_DBLP_ACM_metapath_instance_sampler(name=args.dataset, metapath=coclustering_metapath,
-                                                            n=10000, negative_samples=True)
-    pos_instances = IMDB_DBLP_ACM_metapath_instance_sampler(name=args.dataset, metapath=coclustering_metapath,
-                                                            n=10000, negative_samples=False)
+
+    pos_instances, neg_instances = IMDB_DBLP_ACM_metapath_instance_sampler(name=args.dataset,
+                                                                           metapath=coclustering_metapath,
+                                                                           n=10000,
+                                                                           corruption_method=args.corruption_method,
+                                                                           corruption_position=corruption_position)
     print('Data transformed!')
 
     model = RGCN(input_dim=node_feature_matrix.shape[1],
@@ -34,8 +37,7 @@ def train_rgcn(args):
                        edge_index=edge_index,
                        edge_type=edge_type)
         triplets = heterogeneous_negative_sampling_naive(edge_index, id_type_mask)
-        # loss = triplet_loss_type_aware(triplets, output, id_type_mask, lmbd=args.type_lambda) if args.type_aware_loss \
-        #     else triplet_loss_pure(triplets, output)
+
         loss = triplet_loss_pure(triplets, output)
         if args.cocluster_loss:
             loss = loss + args.type_lambda*push_pull_metapath_instance_loss(pos_instances, neg_instances, output)

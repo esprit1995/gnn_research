@@ -252,20 +252,39 @@ def corrupt_positive_metapath_instance(mpinstance: tuple,
     return tuple(corrupted_instance)
 
 
-def IMDB_DBLP_ACM_metapath_instance_sampler(name: str, metapath: Tuple, n: int, negative_samples: bool = False,
-                                            root: str = "/home/ubuntu/msandal_code/PyG_playground/data/IMDB_ACM_DBLP") -> list:
+def IMDB_DBLP_ACM_metapath_instance_sampler(name: str, metapath: Tuple, n: int,
+                                            corruption_method: str = 'random',
+                                            corruption_position: tuple = (0, 0),
+                                            root: str = "/home/ubuntu/msandal_code/PyG_playground/data/IMDB_ACM_DBLP") -> tuple:
     """
     sampler wrapper for IMDB_DBLP_ACM dataset
     :param name: name of the dataset to get samples for
     :param metapath: tuple containing metapath template
     :param n: how many instances to sample
+    :param corruption_method: 'random' or 'crossover'
+    :param corruption_position: tuple (idx_min, idx_max)
     :param root: path to the directory that contains data (or where it will be dowloaded)
-    :return: list of tuples - metapath instances
+    :return: (positive_instances, corrupted instances))
     """
     ds = IMDB_ACM_DBLP(root=os.path.join(root, name), name=name,
                        multi_type_labels=True)[0]
-    results = sample_metapath_instances(metapath, n, ds, negative_samples=negative_samples)
-    return results
+    adj_dicts = dict()
+    neg_adj_dicts = dict()
+    for key in list(ds['edge_index_dict'].keys()):
+        adj_dicts[key] = edge_index_to_adj_dict(ds['edge_index_dict'], ds['node_type_mask'], key)
+        neg_adj_dicts[key] = edge_index_to_neg_adj_dict(ds['edge_index_dict'], ds['node_type_mask'], key)
+
+    positive_instances = sample_metapath_instances(metapath, n, ds, negative_samples=False)
+    negative_instances = list()
+    for i in range(len(positive_instances)):
+        negative_instances.append(corrupt_positive_metapath_instance(mpinstance=positive_instances[i],
+                                                                     mptemplate=metapath,
+                                                                     positions=corruption_position,
+                                                                     adj_dicts=adj_dicts,
+                                                                     neg_adj_dicts=neg_adj_dicts,
+                                                                     node_type_mask=ds['node_type_mask'],
+                                                                     method=corruption_method))
+    return positive_instances, negative_instances
 
 
 # ############################################################

@@ -23,6 +23,8 @@ def model_run_argparse():
                         help='whether to use type aware loss. Flag')
     parser.add_argument('--cocluster_loss', action='store_true',
                         help='whether to use additional co-clustering loss')
+    parser.add_argument('--corruption_method', type=str, default='random',
+                        help='method of positive instance corruption')
     parser.add_argument('--multitype_labels', type=str2bool, default=True,
                         help='whether to use multitype labels for ACM/DBLP')
     parser.add_argument('--type_lambda', type=float, default=1,
