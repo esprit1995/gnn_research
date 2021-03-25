@@ -92,7 +92,7 @@ def IMDB_ACM_DBLP_for_rgcn(name: str, args):
     dataset = IMDB_ACM_DBLP(root="/home/ubuntu/msandal_code/PyG_playground/data/IMDB_ACM_DBLP/" + name,
                             name=name,
                             multi_type_labels=args.multitype_labels,
-                            redownload=True)[0]
+                            redownload=args.redownload_data)[0]
 
     # n_nodes_dict
     node_count_info = pd.Series(dataset['node_type_mask']).value_counts()

@@ -2,7 +2,8 @@ import torch
 import pandas as pd
 from models import RGCN, GTN, HAN
 from data_transforms import IMDB_ACM_DBLP_for_rgcn, IMDB_ACM_DBLP_for_gtn, ACM_HAN_for_han
-from utils.tools import heterogeneous_negative_sampling_naive, IMDB_DBLP_ACM_metapath_instance_sampler, label_dict_to_metadata
+from utils.tools import heterogeneous_negative_sampling_naive, IMDB_DBLP_ACM_metapath_instance_sampler, \
+    label_dict_to_metadata
 from utils.losses import triplet_loss_pure, triplet_loss_type_aware, push_pull_metapath_instance_loss
 
 
@@ -11,18 +12,37 @@ def train_rgcn(args):
     output_dim = 50
     hidden_dim = 50
     num_layers = 3
-    coclustering_metapath = ('0', '1', '0', '2')
-    corruption_position = (1,2)
+    coclustering_metapaths_dict = {'ACM': [('0', '1', '0', '2'), ('2', '0', '1')],
+                                   'DBLP': [('0', '1', '2'), ('0', '1', '0'), ('1', '2', '1')]}
+    corruption_positions_dict = {'ACM': [(1, 2), (2, 2)],
+                                 'DBLP': [(1, 1), (1, 2), (2, 2)]}
     # #######################
+
+    # ========> preparing data: wrangling, sampling
     n_node_dict, node_label_dict, id_type_mask, node_feature_matrix, edge_index, edge_type = IMDB_ACM_DBLP_for_rgcn(
         args.dataset, args)
 
-    pos_instances, neg_instances = IMDB_DBLP_ACM_metapath_instance_sampler(name=args.dataset,
-                                                                           metapath=coclustering_metapath,
-                                                                           n=10000,
-                                                                           corruption_method=args.corruption_method,
-                                                                           corruption_position=corruption_position)
-    print('Data transformed!')
+    # sampling metapath instances for the cocluster push-pull loss
+    if args.cocluster_loss:
+        pos_instances = dict()
+        neg_instances = dict()
+
+        try:
+            metapath_templates, corruption_positions = coclustering_metapaths_dict[args.dataset], corruption_positions_dict[
+                args.dataset]
+        except Exception as e:
+            raise ValueError('co-clustering loss is not supported for dataset name ' + str(args.dataset))
+        for mptemplate_idx in range(len(metapath_templates)):
+            pos_instances[metapath_templates[mptemplate_idx]], \
+            neg_instances[metapath_templates[mptemplate_idx]] = IMDB_DBLP_ACM_metapath_instance_sampler(
+                name=args.dataset,
+                metapath=metapath_templates[mptemplate_idx],
+                n=args.instances_per_template,
+                corruption_method=args.corruption_method,
+                corruption_position=corruption_positions[mptemplate_idx])
+    print('Data ready!')
+
+    # ========> training RGCN
 
     model = RGCN(input_dim=node_feature_matrix.shape[1],
                  output_dim=output_dim,
@@ -38,9 +58,16 @@ def train_rgcn(args):
                        edge_type=edge_type)
         triplets = heterogeneous_negative_sampling_naive(edge_index, id_type_mask)
 
-        loss = triplet_loss_pure(triplets, output)
+        # regular loss: triplet loss
+        loss = triplet_loss_pure(triplets, output) if args.base_triplet_loss else 0
+        # additional co-clustering losses
         if args.cocluster_loss:
-            loss = loss + args.type_lambda*push_pull_metapath_instance_loss(pos_instances, neg_instances, output)
+            mptemplates = list(pos_instances.keys())
+            for idx in range(len(mptemplates)):
+                loss = loss + args.type_lambda * push_pull_metapath_instance_loss(pos_instances[mptemplates[idx]],
+                                                                                  neg_instances[mptemplates[idx]],
+                                                                                  corruption_positions[idx],
+                                                                                  output)
 
         losses.append(loss)
         optimizer.zero_grad()

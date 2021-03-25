@@ -104,8 +104,8 @@ def push_pull_metapath_instance_loss(pos_instances: list, corrupted_instances: l
     left_part_neg = node_embeddings[corrupted_nodes]
     right_part_neg = node_embeddings[normal_nodes]
     out_n = F.logsigmoid(
-        -torch.bmm(left_part_neg.view(n_corrupted*n_normal, 1, -1),
-                   right_part_neg.view(n_corrupted*n_normal, -1, 1)))
+        -torch.bmm(left_part_neg.view(n_corrupted*n_normal*len(pos_instances), 1, -1),
+                   right_part_neg.view(n_corrupted*n_normal*len(pos_instances), -1, 1)))
 
     # ----- computing loss contribution from the positive instances
     pos_tensor = torch.tensor(pos_instances)

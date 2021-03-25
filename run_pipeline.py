@@ -57,8 +57,11 @@ if __name__ == "__main__":
     experiment_name = '_'.join([args.dataset,
                                 args.model,
                                 str(args.epochs), 'epochs',
+                                str(args.base_triplet_loss), 'baseTripletLoss',
                                 str(args.cocluster_loss), 'coclusterLoss',
                                 str(args.type_lambda), 'lambda',
+                                str(args.corruption_method), 'corrmethod',
+                                str(args.instances_per_template), 'ipt',
                                 str(args.random_seed), 'rs',
                                 datetime.now().strftime("%d_%m_%Y_%H:%M:%S"),
                                 special_notes])

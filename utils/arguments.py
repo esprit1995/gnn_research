@@ -13,6 +13,8 @@ def model_run_argparse():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, default='ACM',
                         help='which dataset to use. available: any of [ACM, DBLP, IMDB, ACM_HAN]. Default=ACM')
+    parser.add_argument('--redownload_data', type=str2bool, default=False,
+                        help='whether to redownload data in case it is already available')
     parser.add_argument('--model', type=str, default='RGCN',
                         help='which model to use. available: any of [RGCN, GTN]. Default=RGCN')
     parser.add_argument('--epochs', type=int, default=100,
@@ -21,10 +23,14 @@ def model_run_argparse():
                         help='reproducibility: seed for random generators. Default 10')
     parser.add_argument('--type_aware_loss', action='store_true',
                         help='whether to use type aware loss. Flag')
+    parser.add_argument('--base_triplet_loss', type=str2bool, default=True,
+                        help='whether to use the default unsupervised learning loss - the triplet loss - as the base loss')
     parser.add_argument('--cocluster_loss', action='store_true',
                         help='whether to use additional co-clustering loss')
     parser.add_argument('--corruption_method', type=str, default='random',
                         help='method of positive instance corruption')
+    parser.add_argument('--instances_per_template', type=int, default=50000,
+                        help='how many metapath instances per template to sample')
     parser.add_argument('--multitype_labels', type=str2bool, default=True,
                         help='whether to use multitype labels for ACM/DBLP')
     parser.add_argument('--type_lambda', type=float, default=1,
