@@ -28,7 +28,8 @@ class RGCN(nn.Module):
             out_channels = self.hidden_dim if i != self.num_layers - 1 else self.output_dim
             self.gcs.append(RGCNConv(in_channels=in_channels,
                                      out_channels=out_channels,
-                                     num_relations=self.num_relations))
+                                     num_relations=self.num_relations,
+                                     num_bases=30))
 
     def forward(self, x: Union[OptTensor, Tuple[OptTensor, torch.Tensor]],
                 edge_index: Adj, edge_type: OptTensor = None):

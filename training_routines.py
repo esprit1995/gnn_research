@@ -49,7 +49,7 @@ def train_rgcn(args):
                  hidden_dim=hidden_dim,
                  num_relations=pd.Series(edge_type.numpy()).nunique(),
                  num_layers=num_layers)
-    optimizer = torch.optim.AdamW(model.parameters())
+    optimizer = torch.optim.AdamW(model.parameters(), weight_decay=0.001)
     losses = []
     for epoch in range(args.epochs):
         model = model.float()
@@ -77,7 +77,7 @@ def train_rgcn(args):
         if epoch % 5 == 0:
             print("Epoch: ", epoch, " loss: ", loss)
     all_ids, all_labels = label_dict_to_metadata(node_label_dict)
-    return output, all_ids, all_labels
+    return output, all_ids, all_labels, id_type_mask
 
 
 def train_gtn(args):

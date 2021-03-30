@@ -6,13 +6,14 @@ from datetime import datetime
 
 from training_routines import train_rgcn, train_gtn, train_han
 from utils.arguments import model_run_argparse
+from utils.visualization import draw_embeddings
 from torch.utils.tensorboard import SummaryWriter
 from downstream_tasks.node_clustering import evaluate_clustering
 from downstream_tasks.node_classification import evaluate_classification
 from utils.results_recording_local import record_experiment_locally
 
 
-def run_pipeline(args_):
+def run_pipeline(args_, experiment_name: str = ''):
     print(experiment_name)
     torch.manual_seed(args_.random_seed)
 
@@ -24,7 +25,7 @@ def run_pipeline(args_):
     # model training: obtain node embeddings of a given dataset by a give architecture
     # embeddings are stored in :torch.tensor:: output
     if args_.model == 'RGCN':
-        output, metadata_ids, metadata_labels = train_rgcn(args_)
+        output, metadata_ids, metadata_labels, metadata_types = train_rgcn(args_)
     elif args_.model == 'GTN':
         output, metadata = train_gtn(args_)
     elif args_.model == 'HAN':
@@ -33,6 +34,11 @@ def run_pipeline(args_):
         raise NotImplementedError("No implementation for model name: ", args_.model)
 
     writer.add_embedding(output[metadata_ids], metadata=metadata_labels)
+    draw_embeddings(embeddings=output[metadata_ids],
+                    cluster_labels=metadata_labels,
+                    node_type_mask=metadata_types[metadata_ids],
+                    path_to_save=os.path.join('.', 'html_viz'),
+                    name_to_save=experiment_name + '.html')
     writer.flush()
     writer.close()
 
@@ -53,7 +59,7 @@ def run_pipeline(args_):
 
 if __name__ == "__main__":
     args = model_run_argparse()
-    special_notes = ''
+    special_notes = 'testing_viz'
     experiment_name = '_'.join([args.dataset,
                                 args.model,
                                 str(args.epochs), 'epochs',
@@ -63,6 +69,6 @@ if __name__ == "__main__":
                                 str(args.corruption_method), 'corrmethod',
                                 str(args.instances_per_template), 'ipt',
                                 str(args.random_seed), 'rs',
-                                datetime.now().strftime("%d_%m_%Y_%H:%M:%S"),
+                                datetime.now().strftime("%d_%m_%Y_%H_%M_%S"),
                                 special_notes])
-    run_pipeline(args)
+    run_pipeline(args, experiment_name)
