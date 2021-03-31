@@ -284,18 +284,23 @@ class IMDB_ACM_DBLP(InMemoryDataset):
                                                 test_id_label.numpy().T])
             if self.ds_name == 'DBLP':
                 paper_author = pd.DataFrame(columns=['paper', 'author'],
-                                            data=IMDB_ACM_DBLP.read_2colInt_txt(open(os.path.join(self.raw_dir, 'paper_author.txt'), 'r')))
+                                            data=IMDB_ACM_DBLP.read_2colInt_txt(
+                                                open(os.path.join(self.raw_dir, 'paper_author.txt'), 'r')))
                 paper_conf = pd.DataFrame(columns=['paper', 'conf'],
-                                          data=IMDB_ACM_DBLP.read_2colInt_txt(open(os.path.join(self.raw_dir, 'paper_conf.txt'), 'r')))
+                                          data=IMDB_ACM_DBLP.read_2colInt_txt(
+                                              open(os.path.join(self.raw_dir, 'paper_conf.txt'), 'r')))
                 author_label = pd.DataFrame(columns=['author', 'label'],
-                                            data=IMDB_ACM_DBLP.read_2colInt_txt(open(os.path.join(self.raw_dir, 'author_label.txt'), 'r')))
+                                            data=IMDB_ACM_DBLP.read_2colInt_txt(
+                                                open(os.path.join(self.raw_dir, 'author_label.txt'), 'r')))
                 conf_label = pd.DataFrame(columns=['conf', 'label'],
-                                          data=IMDB_ACM_DBLP.read_2colInt_txt(open(os.path.join(self.raw_dir, 'conf_label.txt'), 'r')))
+                                          data=IMDB_ACM_DBLP.read_2colInt_txt(
+                                              open(os.path.join(self.raw_dir, 'conf_label.txt'), 'r')))
 
                 paper_author = paper_author[paper_author['author'].isin(author_label['author'].tolist())]
                 paper_conf = paper_conf[paper_conf['paper'].isin(paper_author['paper'].tolist())]
                 paper_conf = paper_conf.groupby(['conf'])['paper'].count().to_frame().reset_index()
-                paper_conf_local = pd.DataFrame(columns=['paper', 'conf_local'], data=edge_index_dict[('1', '2')].numpy().T)
+                paper_conf_local = pd.DataFrame(columns=['paper', 'conf_local'],
+                                                data=edge_index_dict[('1', '2')].numpy().T)
                 paper_conf_local = paper_conf_local.groupby(['conf_local'])['paper'].count().to_frame().reset_index()
                 conf_local_conf = paper_conf.merge(paper_conf_local, on='paper', how='inner')[['conf_local', 'conf']]
                 conf_local_label = conf_local_conf.merge(conf_label, on='conf', how='inner')[['conf_local', 'label']]
@@ -425,6 +430,104 @@ class IMDB_ACM_DBLP(InMemoryDataset):
         for i in range(len(tups)):
             node_type_mask = node_type_mask + [i] * (tups[i][1] - tups[i][0] + 1)
         return torch.tensor(node_type_mask)
+
+
+class DBLP_ACM_from_NSHE(InMemoryDataset):
+    def __init__(self, root, name, transform=None, pre_transform=None):
+        """
+        :param root: see PyG docs
+        :param name: which dataset to fetch. must be one of ['acm', 'dblp']
+        :param transform: see PyG docs
+        :param pre_transform: see PyG docs
+        """
+        assert name in ['acm', 'dblp'], \
+            "DBLP_ACM_from_NSHE: name argument must be one of ['acm', 'dblp']"
+        self.github_url = "https://raw.github.com/Andy-Border/NSHE/master/data"
+        self.ds_name = name
+        self.data_url = '/'.join([self.github_url, self.ds_name])
+        root = os.path.join(root, name)
+        if not os.path.exists(root):
+            Path(root).mkdir(parents=True, exist_ok=True)
+        super(DBLP_ACM_from_NSHE, self).__init__(root, transform, pre_transform)
+        self.data, self.slices = torch.load(self.processed_paths[0])
+
+    @property
+    def raw_file_names(self):
+        if self.ds_name == 'dblp':
+            return ['author_label.txt', 'dw_emb_features.npy', 'node2id.txt', 'paper_label.txt',
+                    'relation2id.txt', 'relations.txt']
+        elif self.ds_name == 'acm':
+            return ['dw_emb_features.npy', 'node2id.txt', 'p_label.txt',
+                    'relation2id.txt', 'relations.txt']
+
+    @property
+    def processed_file_names(self):
+        return ['data.pt']
+
+    def download(self):
+        for filename in self.raw_file_names:
+            _ = download_url(self.data_url + '/' + filename, self.raw_dir)
+
+    def process(self):
+        node_features = torch.tensor(np.load(os.path.join(self.raw_dir, 'dw_emb_features.npy')))
+        if self.ds_name == 'dblp':
+            # === node type mask construction
+            node_type_mask = torch.tensor(np.array([0]*2000 + [1]*9556 + [3]*20))
+
+            # --- edge index dictionary construction
+            relations_df = pd.read_csv(os.path.join(self.raw_dir, 'relations.txt'),
+                                       sep='\t',
+                                       header=None)
+            relations_df.columns = ['id1', 'id2', 'edge_type', 'garbage1', 'garbage2']
+            relations_df = relations_df[['id1', 'id2', 'edge_type']]
+            relations_ap = relations_df[relations_df['edge_type'] == 0]
+            relations_pc = relations_df[relations_df['edge_type'] == 1]
+
+            edge_index_dict = dict()
+            edge_index_dict[('0', '1')] = torch.tensor(np.array([relations_ap['id1'].to_numpy(),
+                                                                 relations_ap['id2'].to_numpy()]))
+            edge_index_dict[('1', '0')] = torch.tensor(np.array([relations_ap['id2'].to_numpy(),
+                                                                 relations_ap['id1'].to_numpy()]))
+            edge_index_dict[('1', '2')] = torch.tensor(np.array([relations_pc['id1'].to_numpy(),
+                                                                 relations_pc['id2'].to_numpy()]))
+            edge_index_dict[('2', '1')] = torch.tensor(np.array([relations_pc['id2'].to_numpy(),
+                                                                 relations_pc['id1'].to_numpy()]))
+
+            # --- labeled nodes procurement
+            paper_label = pd.read_csv(os.path.join(self.raw_dir, 'paper_label.txt'),
+                                      sep='\t',
+                                      header=None,
+                                      names=['paper', 'label'])
+            paper_label['paper'] = paper_label['paper'].apply(lambda x: 'p' + str(x))
+            author_label = pd.read_csv(os.path.join(self.raw_dir, 'author_label.txt'),
+                                       sep='\t',
+                                       header=None,
+                                       names=['author', 'label'])
+            author_label['author'] = author_label['author'].apply(lambda x: 'a' + str(x))
+            node2id = pd.read_csv(os.path.join(self.raw_dir, 'node2id.txt'),
+                                  sep='\t').reset_index()
+            node2id.columns = ['node', 'node_id']
+
+            paper_label = paper_label.merge(node2id, how='inner', left_on='paper', right_on='node')
+            author_label = author_label.merge(node2id, how='inner', left_on='author', right_on='node')
+
+        elif self.ds_name == 'acm':
+            pass
+        data_list = [Data(node_features=node_features,
+                          node_type_mask=node_type_mask,
+                          edge_index_dict=edge_index_dict,
+                          paper_id_labels=torch.tensor([paper_label['node_id'].tolist(),
+                                                        paper_label['label'].tolist()]),
+                          author_id_labels=torch.tensor([author_label['node_id'].tolist(),
+                                                         author_label['label'].tolist()]))]
+        if self.pre_filter is not None:
+            data_list = [data for data in data_list if self.pre_filter(data)]
+
+        if self.pre_transform is not None:
+            data_list = [self.pre_transform(data) for data in data_list]
+
+        data, slices = self.collate(data_list)
+        torch.save((data, slices), self.processed_paths[0])
 
 
 class ACM_HAN(InMemoryDataset):
