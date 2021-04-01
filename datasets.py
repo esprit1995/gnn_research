@@ -471,8 +471,8 @@ class DBLP_ACM_from_NSHE(InMemoryDataset):
     def process(self):
         node_features = torch.tensor(np.load(os.path.join(self.raw_dir, 'dw_emb_features.npy')))
         if self.ds_name == 'dblp':
-            # === node type mask construction
-            node_type_mask = torch.tensor(np.array([0]*2000 + [1]*9556 + [3]*20))
+            # === node type mask construction, 0=author, 1=paper, 2=conference
+            node_type_mask = torch.tensor(np.array([0]*2000 + [1]*9556 + [2]*20))
 
             # --- edge index dictionary construction
             relations_df = pd.read_csv(os.path.join(self.raw_dir, 'relations.txt'),
@@ -510,16 +510,44 @@ class DBLP_ACM_from_NSHE(InMemoryDataset):
 
             paper_label = paper_label.merge(node2id, how='inner', left_on='paper', right_on='node')
             author_label = author_label.merge(node2id, how='inner', left_on='author', right_on='node')
-
+            node_id_node_label = torch.tensor([paper_label['node_id'].tolist() + author_label['node_id'].tolist(),
+                                               paper_label['label'].tolist() + author_label['label'].tolist()])
         elif self.ds_name == 'acm':
-            pass
+            # === node type mask construction, 0=paper, 1=author, 2=subject
+            node_type_mask = torch.tensor(np.array([0] * 4019 + [1] * 7167 + [2] * 60))
+
+            # --- edge index dictionary construction
+            relations_df = pd.read_csv(os.path.join(self.raw_dir, 'relations.txt'),
+                                       sep='\t',
+                                       header=None)
+            relations_df.columns = ['id1', 'id2', 'edge_type', 'garbage1']
+            relations_df = relations_df[['id1', 'id2', 'edge_type']]
+            relations_pa = relations_df[relations_df['edge_type'] == 0]
+            relations_ps = relations_df[relations_df['edge_type'] == 1]
+
+            edge_index_dict = dict()
+            edge_index_dict[('0', '1')] = torch.tensor(np.array([relations_pa['id1'].to_numpy(),
+                                                                 relations_pa['id2'].to_numpy()]))
+            edge_index_dict[('1', '0')] = torch.tensor(np.array([relations_pa['id2'].to_numpy(),
+                                                                 relations_pa['id1'].to_numpy()]))
+            edge_index_dict[('0', '2')] = torch.tensor(np.array([relations_ps['id1'].to_numpy(),
+                                                                 relations_ps['id2'].to_numpy()]))
+            edge_index_dict[('2', '0')] = torch.tensor(np.array([relations_ps['id2'].to_numpy(),
+                                                                 relations_ps['id1'].to_numpy()]))
+            # --- labeled nodes procurement
+            paper_label = pd.read_csv(os.path.join(self.raw_dir, 'p_label.txt'),
+                                      sep='\t',
+                                      header=None)
+            paper_label.columns = ['paper_id', 'label']
+            node_id_node_label = torch.tensor([paper_label['paper_id'].tolist(),
+                                               paper_label['label'].tolist()])
+        else:
+            raise ValueError('DBLP_ACM_from_NSHE: unknown dataset name')
+
         data_list = [Data(node_features=node_features,
                           node_type_mask=node_type_mask,
                           edge_index_dict=edge_index_dict,
-                          paper_id_labels=torch.tensor([paper_label['node_id'].tolist(),
-                                                        paper_label['label'].tolist()]),
-                          author_id_labels=torch.tensor([author_label['node_id'].tolist(),
-                                                         author_label['label'].tolist()]))]
+                          node_id_node_label = node_id_node_label)]
         if self.pre_filter is not None:
             data_list = [data for data in data_list if self.pre_filter(data)]
 
