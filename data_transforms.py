@@ -4,12 +4,18 @@ import torch
 import dgl
 import os
 import pickle
-from datasets import DBLP_MAGNN, IMDB_ACM_DBLP, ACM_HAN
+from datasets import DBLP_MAGNN, IMDB_ACM_DBLP, ACM_HAN, DBLP_ACM_IMDB_from_NSHE
 from sklearn.decomposition import PCA
+from sklearn.model_selection import train_test_split
 from utils.tools import node_type_encoding
 
 
-def DBLP_MAGNN_for_rgcn():
+# #############################################################
+# Architecture: RGCN. Datasets from papers: MAGNN, GTN, NSHE  #
+# Function name format: PAPER_for_architecture
+# #############################################################
+
+def MAGNN_for_rgcn():
     """
     transform the datasets.DBLP_MAGNN torch_geometric dataset to a
     torch_geometric.nn.conv.RGCNConv - compatible set of data structures
@@ -81,7 +87,7 @@ def DBLP_MAGNN_for_rgcn():
     return n_nodes_dict, node_labels_dict, id_type_mask, node_feature_matrix, edge_index, edge_type
 
 
-def IMDB_ACM_DBLP_for_rgcn(name: str, args):
+def GTN_for_rgcn(name: str, args):
     """
     transform the datasets.IMDB_ACM_DBLP torch_geometric dataset to a
     torch_geometric.nn.conv.RGCNConv - compatible set of data structures
@@ -104,7 +110,7 @@ def IMDB_ACM_DBLP_for_rgcn(name: str, args):
 
     # node_labels_dict
     labeled_type = id_type_mask[dataset['train_id_label'][0][0].item()].item()
-    node_labels_dict = {str(labeled_type) + '_' + ds_part: dataset[ds_part + '_id_label'] for ds_part in
+    node_labels_dict = {ds_part: dataset[ds_part + '_id_label'] for ds_part in
                         ['train', 'valid', 'test']}
 
     # edge_index, edge_type
@@ -118,10 +124,63 @@ def IMDB_ACM_DBLP_for_rgcn(name: str, args):
     edge_index = torch.cat(edge_index, dim=1)
     edge_type = torch.tensor(edge_type)
 
-    return n_nodes_dict, node_labels_dict, id_type_mask, node_feature_matrix, edge_index, edge_type
+    return dataset, n_nodes_dict, node_labels_dict, id_type_mask, node_feature_matrix, edge_index, edge_type
 
 
-def IMDB_ACM_DBLP_for_gtn(name: str, data_dir: str = '/home/ubuntu/msandal_code/PyG_playground/data/IMDB_ACM_DBLP'):
+def NSHE_for_rgcn(name: str, data_dir: str = '/home/ubuntu/msandal_code/PyG_playground/data/NSHE'):
+    """
+    prepare datasets from the NSHE paper for the RGCN network
+    :param name: name of the dataset. must be one of ['dblp', 'imdb', 'acm']
+    :param data_dir: directory where the NSHE datasets are stored/should be downloaded to
+    :return: the necessary data structures
+    """
+    name = name.lower()
+    ds = DBLP_ACM_IMDB_from_NSHE(root=data_dir, name=name)[0]
+
+    # n_nodes_dict
+    node_count_info = pd.Series(ds['node_type_mask']).value_counts()
+    n_nodes_dict = {str(val): node_count_info.loc[val] for val in node_count_info.index}
+
+    # id_type_mask, node_feature_matrix
+    id_type_mask = ds['node_type_mask']
+    node_feature_matrix = node_type_encoding(ds['node_features'].numpy(), id_type_mask.numpy())
+
+    # edge_index, edge_type
+    edge_index = list()
+    edge_type = list()
+    edge_type_counter = 0
+    for key in ds['edge_index_dict'].keys():
+        edge_index.append(ds['edge_index_dict'][key])
+        edge_type = edge_type + [edge_type_counter] * ds['edge_index_dict'][key].shape[1]
+        edge_type_counter += 1
+    edge_index = torch.cat(edge_index, dim=1)
+    edge_type = torch.tensor(edge_type)
+
+    # node_labels_dict
+    id_label_df = pd.DataFrame(data=ds['node_id_node_label'].numpy().T,
+                               columns=['id', 'label'])
+    train_id_label, test_id_label = train_test_split(id_label_df.to_numpy(),
+                                                     test_size=0.7,
+                                                     shuffle=True,
+                                                     stratify=id_label_df.to_numpy()[:, 1],
+                                                     random_state=0)
+    train_id_label, valid_id_label = train_test_split(train_id_label,
+                                                      test_size=0.3,
+                                                      shuffle=True,
+                                                      stratify=train_id_label[:, 1],
+                                                      random_state=0)
+    node_labels_dict = {'train': torch.from_numpy(train_id_label).T,
+                        'valid': torch.from_numpy(valid_id_label).T,
+                        'test': torch.from_numpy(test_id_label).T}
+
+    return ds, n_nodes_dict, node_labels_dict, id_type_mask, node_feature_matrix, edge_index, edge_type
+
+
+# #############################################################
+# Architecture: GTN. Datasets from papers: GTN                #
+# #############################################################
+
+def GTN_for_gtn(name: str, data_dir: str = '/home/ubuntu/msandal_code/PyG_playground/data/IMDB_ACM_DBLP'):
     """
     prepare data structures for GTN architecture
     https://github.com/seongjunyun/Graph_Transformer_Networks
@@ -175,5 +234,5 @@ def ACM_HAN_for_han(data_dir: str = '/home/ubuntu/msandal_code/PyG_playground/da
     for metapath in metapaths:
         metagraph = dgl.metapath_reachable_graph(dataset.dgl_hetgraph, metapath=metapath)
         edge_index_list.append(metagraph.adjacency_matrix(etype=metagraph.etypes[0]).coalesce().indices())
-    id_type_mask = torch.tensor([0]*dataset.features.shape[0])
+    id_type_mask = torch.tensor([0] * dataset.features.shape[0])
     return dataset.dgl_hetgraph, dataset.features, dataset.labels, dataset.num_classes, edge_index_list, id_type_mask

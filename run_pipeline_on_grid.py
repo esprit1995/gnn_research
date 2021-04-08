@@ -8,9 +8,10 @@ from run_pipeline import run_pipeline
 from create_experiment_excel import collect_model_results
 from utils.arguments import model_run_argparse
 
+FROM_PAPER = 'NSHE'
 MODELS_TO_RUN = ['RGCN']
 DATASETS_TO_RUN = ['DBLP', 'ACM']
-EPOCHS_MAX = [500] # [100, 150, 200, 250, 300]
+EPOCHS_MAX = [100, 150, 200, 250, 300, 500]
 
 EXCEL_PATH = os.path.join(os.getcwd(), 'data', 'comparative_excels')
 EXCEL_NAME = 'comparative_table.xlsx'
@@ -19,6 +20,7 @@ if __name__ == '__main__':
     mp.set_start_method('spawn', force=True)
     args = model_run_argparse()
     for model in MODELS_TO_RUN:
+        setattr(args, 'from_paper', FROM_PAPER)
         setattr(args, 'redownload_data', True)
         setattr(args, 'cocluster_loss', True)
         setattr(args, 'base_triplet_loss', False)
@@ -30,8 +32,8 @@ if __name__ == '__main__':
                 cprint('Running ' + str(model) + ' on ' + str(dataset) + ' for ' + str(args.epochs) + ' epochs',
                        color='cyan',
                        attrs=['bold'])
-                special_notes = 'added_regularization'
-                experiment_name = '_'.join([args.dataset,
+                special_notes = 'ONLY_pushpull_loss'
+                experiment_name = '_'.join([args.dataset, 'from', args.from_paper,
                                             args.model,
                                             str(args.epochs), 'epochs',
                                             str(args.base_triplet_loss), 'baseTripletLoss',
@@ -40,7 +42,7 @@ if __name__ == '__main__':
                                             str(args.corruption_method), 'corrmethod',
                                             str(args.instances_per_template), 'ipt',
                                             str(args.random_seed), 'rs',
-                                            datetime.now().strftime("%d_%m_%Y_%H:%M:%S"),
+                                            datetime.now().strftime("%d_%m_%Y_%H_%M_%S"),
                                             special_notes])
                 p = mp.Process(target=run_pipeline, args=(args, experiment_name))
                 p.start()

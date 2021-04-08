@@ -1,5 +1,5 @@
 import os
-
+import numpy as np
 import torch
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import f1_score
@@ -8,35 +8,26 @@ from termcolor import cprint
 from datasets import IMDB_ACM_DBLP, ACM_HAN
 
 
-def evaluate_classification(args, node_embeddings: torch.tensor):
+def evaluate_classification(node_embeddings: torch.tensor,
+                            ids_train: np.array, labels_train: np.array,
+                            ids_test: np.array, labels_test: np.array):
     """
     evaluate performance of node classification on given embeddings using logistic regression
-    :param args: experiment argparse arguments
+    :param ids_train: node ids to train on
+    :param labels_train: corresponding labels
+    :param ids_test: node ids to test on
+    :param labels_test: corresponding labels (ground truth)
     :param node_embeddings: node embeddings in torch.tensor format, shape = [n_nodes, n_features]
     :return:
     """
-    if args.dataset in ['IMDB', 'DBLP', 'ACM']:
-        datadir = '/home/ubuntu/msandal_code/PyG_playground/data/IMDB_ACM_DBLP'
-        dataset = IMDB_ACM_DBLP(root=os.path.join(datadir, args.dataset), name=args.dataset)[0]
-    elif args.dataset == 'ACM_HAN':
-        datadir = '/home/ubuntu/msandal_code/PyG_playground/data/ACM_HAN'
-        dataset = ACM_HAN(root=datadir)[0]
-    else:
-        raise NotImplementedError('evaluate_clustering: requested dataset unknown')
-
-    ids_train = dataset['train_id_label'][0].numpy()
-    labels_train = dataset['train_id_label'][1]
-
-    ids_test = dataset['test_id_label'][0].numpy()
-    labels_test = dataset['test_id_label'][1]
 
     embs_train = node_embeddings.detach()[ids_train]
     embs_test = node_embeddings.detach()[ids_test]
     return logreg_node_classification(embs_train, labels_train, embs_test, labels_test)
 
 
-def logreg_node_classification(train_embeddings: torch.tensor, train_labels: torch.tensor,
-                               test_embeddings: torch.tensor, test_labels: torch.tensor) -> tuple:
+def logreg_node_classification(train_embeddings: torch.tensor, labels_train: np.array,
+                               test_embeddings: torch.tensor, labels_test: np.array) -> tuple:
     """
     perform logreg classification on given node embeddings and evaluate it using Macro- and Micro- F1 scores
     :param train_embeddings: train node embeddings in torch.tensor format, shape = [n_nodes_train, n_features]
@@ -46,9 +37,7 @@ def logreg_node_classification(train_embeddings: torch.tensor, train_labels: tor
     :return: tuple(microF1, macroF1)
     """
     train = train_embeddings.numpy()
-    labels_train = train_labels.numpy()
     test = test_embeddings.numpy()
-    labels_test = test_labels.numpy()
 
     classifier = LogisticRegression()
     classifier.fit(train, labels_train)

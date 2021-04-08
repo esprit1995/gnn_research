@@ -1,7 +1,7 @@
 import torch
 import pandas as pd
 from models import RGCN, GTN, HAN
-from data_transforms import IMDB_ACM_DBLP_for_rgcn, IMDB_ACM_DBLP_for_gtn, ACM_HAN_for_han
+from data_transforms import GTN_for_rgcn, GTN_for_gtn, ACM_HAN_for_han, NSHE_for_rgcn
 from utils.tools import heterogeneous_negative_sampling_naive, IMDB_DBLP_ACM_metapath_instance_sampler, \
     label_dict_to_metadata
 from utils.losses import triplet_loss_pure, triplet_loss_type_aware, push_pull_metapath_instance_loss
@@ -17,25 +17,32 @@ def train_rgcn(args):
     corruption_positions_dict = {'ACM': [(1, 2), (2, 2)],
                                  'DBLP': [(1, 1), (1, 2), (2, 2)]}
     # #######################
-
     # ========> preparing data: wrangling, sampling
-    n_node_dict, node_label_dict, id_type_mask, node_feature_matrix, edge_index, edge_type = IMDB_ACM_DBLP_for_rgcn(
-        args.dataset, args)
-
+    if args.from_paper == 'GTN':
+        ds, n_node_dict, node_label_dict, id_type_mask, node_feature_matrix, edge_index, edge_type = GTN_for_rgcn(
+            args.dataset, args)
+    elif args.from_paper == 'NSHE':
+        ds, n_node_dict, node_label_dict, id_type_mask, node_feature_matrix, edge_index, edge_type = NSHE_for_rgcn(
+            name=args.dataset, data_dir='/home/ubuntu/msandal_code/PyG_playground/data/NSHE')
+    else:
+        raise ValueError(
+            'train_rgcn(): for requested paper ---' + str(args.from_paper) + '--- training RGCN is not possible')
+    setattr(ds, 'node_label_dict', node_label_dict)
     # sampling metapath instances for the cocluster push-pull loss
     if args.cocluster_loss:
         pos_instances = dict()
         neg_instances = dict()
 
         try:
-            metapath_templates, corruption_positions = coclustering_metapaths_dict[args.dataset], corruption_positions_dict[
-                args.dataset]
+            metapath_templates, corruption_positions = coclustering_metapaths_dict[args.dataset], \
+                                                       corruption_positions_dict[
+                                                           args.dataset]
         except Exception as e:
             raise ValueError('co-clustering loss is not supported for dataset name ' + str(args.dataset))
         for mptemplate_idx in range(len(metapath_templates)):
             pos_instances[metapath_templates[mptemplate_idx]], \
             neg_instances[metapath_templates[mptemplate_idx]] = IMDB_DBLP_ACM_metapath_instance_sampler(
-                name=args.dataset,
+                dataset=ds,
                 metapath=metapath_templates[mptemplate_idx],
                 n=args.instances_per_template,
                 corruption_method=args.corruption_method,
@@ -77,7 +84,7 @@ def train_rgcn(args):
         if epoch % 5 == 0:
             print("Epoch: ", epoch, " loss: ", loss)
     all_ids, all_labels = label_dict_to_metadata(node_label_dict)
-    return output, all_ids, all_labels, id_type_mask
+    return output, all_ids, all_labels, id_type_mask, ds
 
 
 def train_gtn(args):
@@ -90,7 +97,7 @@ def train_gtn(args):
                     'num_layers': num_layers, 'norm': norm}
     # #######################
     setattr(args, 'model_params', model_params)
-    A, node_features, num_classes, edge_index, edge_type, id_type_mask = IMDB_ACM_DBLP_for_gtn(name='ACM')
+    A, node_features, num_classes, edge_index, edge_type, id_type_mask = GTN_for_gtn(name='ACM')
     model = GTN(num_edge=A.shape[-1],
                 num_channels=num_channels,
                 w_in=node_features.shape[1],

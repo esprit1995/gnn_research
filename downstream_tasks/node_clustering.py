@@ -10,30 +10,19 @@ from datasets import IMDB_ACM_DBLP, ACM_HAN
 from statistics import mean
 
 
-def evaluate_clustering(args, node_embeddings: torch.tensor):
+def evaluate_clustering(node_embeddings: torch.tensor, ids: np.array, labels: np.array):
     """
     evaluate performance of node clustering on given embeddings using k-means algorithm
-    :param args: experiment argparse arguments
     :param node_embeddings: node embeddings in torch.tensor format, shape = [n_nodes, n_features]
+    :param ids: node ids of the test set to evaluate on
+    :param labels:  corresponding labels
     :return:
     """
-    if args.dataset in ['IMDB', 'DBLP', 'ACM']:
-        datadir = '/home/ubuntu/msandal_code/PyG_playground/data/IMDB_ACM_DBLP'
-        dataset = IMDB_ACM_DBLP(root=os.path.join(datadir, args.dataset), name=args.dataset)[0]
-    elif args.dataset == 'ACM_HAN':
-        datadir = '/home/ubuntu/msandal_code/PyG_playground/data/ACM_HAN'
-        dataset = ACM_HAN(root=datadir)[0]
-    else:
-        raise NotImplementedError('evaluate_clustering: requested dataset unknown')
-
-    ids = dataset['test_id_label'][0].numpy()
-    labels = dataset['test_id_label'][1]
-
     embs = node_embeddings.detach()[ids]
     return kmeans_node_clustering(embs, labels)
 
 
-def kmeans_node_clustering(node_embeddings: torch.tensor, true_labels: torch.tensor, runs: int = 10) -> tuple:
+def kmeans_node_clustering(node_embeddings: torch.tensor,labels: np.array, runs: int = 10) -> tuple:
     """
     perform k-means clustering on given node embeddings and evaluate it using NMI and ARI scores
     number of clusters is inferred from the number of different labels
@@ -43,7 +32,6 @@ def kmeans_node_clustering(node_embeddings: torch.tensor, true_labels: torch.ten
     :return: tuple(NMI, ARI)
     """
     emb = node_embeddings.numpy()
-    labels = true_labels.numpy()
     n_clusters = np.unique(labels).size
 
     # fix random state for reproducible results

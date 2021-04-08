@@ -252,22 +252,19 @@ def corrupt_positive_metapath_instance(mpinstance: tuple,
     return tuple(corrupted_instance)
 
 
-def IMDB_DBLP_ACM_metapath_instance_sampler(name: str, metapath: Tuple, n: int,
+def IMDB_DBLP_ACM_metapath_instance_sampler(dataset, metapath: Tuple, n: int,
                                             corruption_method: str = 'random',
-                                            corruption_position: tuple = (0, 0),
-                                            root: str = "/home/ubuntu/msandal_code/PyG_playground/data/IMDB_ACM_DBLP") -> tuple:
+                                            corruption_position: tuple = (0, 0)) -> tuple:
     """
     sampler wrapper for IMDB_DBLP_ACM dataset
-    :param name: name of the dataset to get samples for
+    :param dataset: dataset from which to sample the instances
     :param metapath: tuple containing metapath template
     :param n: how many instances to sample
     :param corruption_method: 'random' or 'crossover'
     :param corruption_position: tuple (idx_min, idx_max)
-    :param root: path to the directory that contains data (or where it will be dowloaded)
     :return: (positive_instances, corrupted instances))
     """
-    ds = IMDB_ACM_DBLP(root=os.path.join(root, name), name=name,
-                       multi_type_labels=True)[0]
+    ds = dataset
     adj_dicts = dict()
     neg_adj_dicts = dict()
     for key in list(ds['edge_index_dict'].keys()):
