@@ -432,23 +432,23 @@ class IMDB_ACM_DBLP(InMemoryDataset):
         return torch.tensor(node_type_mask)
 
 
-class DBLP_ACM_from_NSHE(InMemoryDataset):
+class DBLP_ACM_IMDB_from_NSHE(InMemoryDataset):
     def __init__(self, root, name, transform=None, pre_transform=None):
         """
         :param root: see PyG docs
-        :param name: which dataset to fetch. must be one of ['acm', 'dblp']
+        :param name: which dataset to fetch. must be one of ['acm', 'dblp', 'imdb']
         :param transform: see PyG docs
         :param pre_transform: see PyG docs
         """
-        assert name in ['acm', 'dblp'], \
-            "DBLP_ACM_from_NSHE: name argument must be one of ['acm', 'dblp']"
+        assert name in ['acm', 'dblp', 'imdb'], \
+            "DBLP_ACM_IMDB_from_NSHE: name argument must be one of ['acm', 'dblp', 'imdb']"
         self.github_url = "https://raw.github.com/Andy-Border/NSHE/master/data"
         self.ds_name = name
         self.data_url = '/'.join([self.github_url, self.ds_name])
         root = os.path.join(root, name)
         if not os.path.exists(root):
             Path(root).mkdir(parents=True, exist_ok=True)
-        super(DBLP_ACM_from_NSHE, self).__init__(root, transform, pre_transform)
+        super(DBLP_ACM_IMDB_from_NSHE, self).__init__(root, transform, pre_transform)
         self.data, self.slices = torch.load(self.processed_paths[0])
 
     @property
@@ -458,6 +458,9 @@ class DBLP_ACM_from_NSHE(InMemoryDataset):
                     'relation2id.txt', 'relations.txt']
         elif self.ds_name == 'acm':
             return ['dw_emb_features.npy', 'node2id.txt', 'p_label.txt',
+                    'relation2id.txt', 'relations.txt']
+        elif self.ds_name == 'imdb':
+            return ['dw_emb_features.npy', 'node2id.txt', 'imdb_m_label.txt',
                     'relation2id.txt', 'relations.txt']
 
     @property
@@ -541,6 +544,36 @@ class DBLP_ACM_from_NSHE(InMemoryDataset):
             paper_label.columns = ['paper_id', 'label']
             node_id_node_label = torch.tensor([paper_label['paper_id'].tolist(),
                                                paper_label['label'].tolist()])
+        elif self.ds_name == 'imdb':
+            # === node type mask construction, 0=movie, 1=actor, 2=director
+            node_type_mask = torch.tensor(np.array([0] * 3676 + [1] * 4353 + [2] * 1678))
+
+            # --- edge index dictionary construction
+            relations_df = pd.read_csv(os.path.join(self.raw_dir, 'relations.txt'),
+                                       sep='\t',
+                                       header=None)
+            relations_df.columns = ['id1', 'id2', 'edge_type', 'garbage1']
+            relations_df = relations_df[['id1', 'id2', 'edge_type']]
+            relations_ma = relations_df[relations_df['edge_type'] == 0]
+            relations_md = relations_df[relations_df['edge_type'] == 1]
+
+            edge_index_dict = dict()
+            edge_index_dict[('0', '1')] = torch.tensor(np.array([relations_ma['id1'].to_numpy(),
+                                                                 relations_ma['id2'].to_numpy()]))
+            edge_index_dict[('1', '0')] = torch.tensor(np.array([relations_ma['id2'].to_numpy(),
+                                                                 relations_ma['id1'].to_numpy()]))
+            edge_index_dict[('0', '2')] = torch.tensor(np.array([relations_md['id1'].to_numpy(),
+                                                                 relations_md['id2'].to_numpy()]))
+            edge_index_dict[('2', '0')] = torch.tensor(np.array([relations_md['id2'].to_numpy(),
+                                                                 relations_md['id1'].to_numpy()]))
+
+            # --- labeled nodes procurement
+            movie_label = pd.read_csv(os.path.join(self.raw_dir, 'imdb_m_label.txt'),
+                                      sep='\t',
+                                      header=None).reset_index(drop=False)
+            movie_label.columns = ['movie_id', 'label']
+            node_id_node_label = torch.tensor([movie_label['movie_id'].tolist(),
+                                               movie_label['label'].tolist()])
         else:
             raise ValueError('DBLP_ACM_from_NSHE: unknown dataset name')
 
