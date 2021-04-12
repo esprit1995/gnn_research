@@ -30,18 +30,24 @@ def evaluate_DeepWalk(path_to_embs: str = DEFAULT_COMP_EMB_PATH,
     embs = embs[:, 1:]  # remove the first column, as it is not a feature
     if from_paper == 'nshe':
         dataset = DBLP_ACM_IMDB_from_NSHE(root=os.path.join(DEFAULT_DATA_PATH, 'NSHE'), name=dataset.lower())[0]
-        id_label_clustering = np.vstack([dataset['train_id_label'],
-                                         dataset['test_id_label'],
-                                         dataset['valid_id_label']])
-        id_label_classification_train = np.vstack([dataset['train_id_label'],
-                                                   dataset['valid_id_label']])
-        id_label_classification_test  = dataset['test_id_label']
-        # --> clustering, NMI, ARI metrics of K-means
-        NMI, ARI = evaluate_clustering(torch.tensor(embs), ids=id_label_clustering[:, 0],
-                                       labels=id_label_clustering[:, 1])
-        # --> classification, microF1, macroF1 metrics of logreg
-        microF1, macroF1 = evaluate_classification(torch.tensor(embs),
-                                                   ids_train=id_label_classification_train[:, 0],
-                                                   labels_train=id_label_classification_train[:, 1],
-                                                   ids_test=id_label_classification_test[:, 0],
-                                                   labels_test=id_label_classification_test[:, 1])
+    elif from_paper == 'gtn':
+        dataset = IMDB_ACM_DBLP_from_GTN(root=os.path.join(DEFAULT_DATA_PATH, 'IMDB_ACM_DBLP', dataset.upper()),
+                                         name=dataset.upper())[0]
+        dataset['train_id_label'] = dataset['train_id_label'].numpy().T
+        dataset['test_id_label'] = dataset['test_id_label'].numpy().T
+        dataset['valid_id_label'] = dataset['valid_id_label'].numpy().T
+    id_label_clustering = np.vstack([dataset['train_id_label'],
+                                     dataset['test_id_label'],
+                                     dataset['valid_id_label']])
+    id_label_classification_train = np.vstack([dataset['train_id_label'],
+                                               dataset['valid_id_label']])
+    id_label_classification_test  = dataset['test_id_label']
+    # --> clustering, NMI, ARI metrics of K-means
+    NMI, ARI = evaluate_clustering(torch.tensor(embs), ids=id_label_clustering[:, 0],
+                                   labels=id_label_clustering[:, 1])
+    # --> classification, microF1, macroF1 metrics of logreg
+    microF1, macroF1 = evaluate_classification(torch.tensor(embs),
+                                               ids_train=id_label_classification_train[:, 0],
+                                               labels_train=id_label_classification_train[:, 1],
+                                               ids_test=id_label_classification_test[:, 0],
+                                               labels_test=id_label_classification_test[:, 1])
