@@ -5,7 +5,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import f1_score
 from termcolor import cprint
 
-from datasets import IMDB_ACM_DBLP, ACM_HAN
+from datasets import IMDB_ACM_DBLP_from_GTN, ACM_HAN
 
 
 def evaluate_classification(node_embeddings: torch.tensor,

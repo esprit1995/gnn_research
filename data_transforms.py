@@ -4,7 +4,7 @@ import torch
 import dgl
 import os
 import pickle
-from datasets import DBLP_MAGNN, IMDB_ACM_DBLP, ACM_HAN, DBLP_ACM_IMDB_from_NSHE
+from datasets import DBLP_MAGNN, IMDB_ACM_DBLP_from_GTN, ACM_HAN, DBLP_ACM_IMDB_from_NSHE
 from sklearn.decomposition import PCA
 from sklearn.model_selection import train_test_split
 from utils.tools import node_type_encoding
@@ -95,10 +95,10 @@ def GTN_for_rgcn(name: str, args):
     :param args: run arguments
     :return:
     """
-    dataset = IMDB_ACM_DBLP(root="/home/ubuntu/msandal_code/PyG_playground/data/IMDB_ACM_DBLP/" + name,
-                            name=name,
-                            multi_type_labels=args.multitype_labels,
-                            redownload=args.redownload_data)[0]
+    dataset = IMDB_ACM_DBLP_from_GTN(root="/home/ubuntu/msandal_code/PyG_playground/data/IMDB_ACM_DBLP/" + name,
+                                     name=name,
+                                     multi_type_labels=args.multitype_labels,
+                                     redownload=args.redownload_data)[0]
 
     # n_nodes_dict
     node_count_info = pd.Series(dataset['node_type_mask']).value_counts()
@@ -191,7 +191,7 @@ def GTN_for_gtn(name: str, data_dir: str = '/home/ubuntu/msandal_code/PyG_playgr
     if name not in ['ACM', 'IMDB', 'DBLP']:
         raise ValueError('invalid dataset name: ', name)
 
-    dataset = IMDB_ACM_DBLP(root=os.path.join(data_dir, name), name=name)[0]
+    dataset = IMDB_ACM_DBLP_from_GTN(root=os.path.join(data_dir, name), name=name)[0]
 
     # edge_index, edge_type
     edge_index = list()

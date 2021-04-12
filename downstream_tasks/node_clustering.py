@@ -6,7 +6,7 @@ from sklearn.metrics.cluster import normalized_mutual_info_score
 from sklearn.metrics.cluster import adjusted_rand_score
 from termcolor import cprint
 
-from datasets import IMDB_ACM_DBLP, ACM_HAN
+from datasets import IMDB_ACM_DBLP_from_GTN, ACM_HAN
 from statistics import mean
 
 
