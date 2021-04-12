@@ -200,7 +200,7 @@ class DBLP_MAGNN(InMemoryDataset):
         return terms, paper_term
 
 
-class IMDB_ACM_DBLP(InMemoryDataset):
+class IMDB_ACM_DBLP_from_GTN(InMemoryDataset):
     ggl_drive_url = 'https://drive.google.com/uc?export=download&id=1qOZ3QjqWMIIvWjzrIdRe3EA4iKzPi6S5'
     dblp_additional = 'https://raw.github.com/cynricfu/MAGNN/master/data/raw/DBLP/'
 
@@ -220,7 +220,7 @@ class IMDB_ACM_DBLP(InMemoryDataset):
         self.ds_name = name if name in ['DBLP', 'IMDB', 'ACM'] else None
         if self.ds_name is None:
             raise ValueError('IMDB_ACM_DBLP.__init__(): name argument invalid!')
-        super(IMDB_ACM_DBLP, self).__init__(root, transform, pre_transform)
+        super(IMDB_ACM_DBLP_from_GTN, self).__init__(root, transform, pre_transform)
         self.data, self.slices = torch.load(self.processed_paths[0])
 
     @property
@@ -259,8 +259,8 @@ class IMDB_ACM_DBLP(InMemoryDataset):
                 continue
             with open(os.path.join(self.raw_dir, file), 'rb') as f:
                 data_dict[re.sub('.pkl', '', file)] = pkl.load(f)
-        node_type_mask = IMDB_ACM_DBLP.infer_type_mask_from_edges(data_dict['edges'])
-        edge_index_dict = IMDB_ACM_DBLP.get_edge_index_dict(data_dict['edges'], node_type_mask)
+        node_type_mask = IMDB_ACM_DBLP_from_GTN.infer_type_mask_from_edges(data_dict['edges'])
+        edge_index_dict = IMDB_ACM_DBLP_from_GTN.get_edge_index_dict(data_dict['edges'], node_type_mask)
         train_id_label = torch.tensor(np.array(data_dict['labels'][0]).T)
         valid_id_label = torch.tensor(np.array(data_dict['labels'][1]).T)
         test_id_label = torch.tensor(np.array(data_dict['labels'][2]).T)
@@ -284,16 +284,16 @@ class IMDB_ACM_DBLP(InMemoryDataset):
                                                 test_id_label.numpy().T])
             if self.ds_name == 'DBLP':
                 paper_author = pd.DataFrame(columns=['paper', 'author'],
-                                            data=IMDB_ACM_DBLP.read_2colInt_txt(
+                                            data=IMDB_ACM_DBLP_from_GTN.read_2colInt_txt(
                                                 open(os.path.join(self.raw_dir, 'paper_author.txt'), 'r')))
                 paper_conf = pd.DataFrame(columns=['paper', 'conf'],
-                                          data=IMDB_ACM_DBLP.read_2colInt_txt(
+                                          data=IMDB_ACM_DBLP_from_GTN.read_2colInt_txt(
                                               open(os.path.join(self.raw_dir, 'paper_conf.txt'), 'r')))
                 author_label = pd.DataFrame(columns=['author', 'label'],
-                                            data=IMDB_ACM_DBLP.read_2colInt_txt(
+                                            data=IMDB_ACM_DBLP_from_GTN.read_2colInt_txt(
                                                 open(os.path.join(self.raw_dir, 'author_label.txt'), 'r')))
                 conf_label = pd.DataFrame(columns=['conf', 'label'],
-                                          data=IMDB_ACM_DBLP.read_2colInt_txt(
+                                          data=IMDB_ACM_DBLP_from_GTN.read_2colInt_txt(
                                               open(os.path.join(self.raw_dir, 'conf_label.txt'), 'r')))
 
                 paper_author = paper_author[paper_author['author'].isin(author_label['author'].tolist())]
@@ -378,11 +378,11 @@ class IMDB_ACM_DBLP(InMemoryDataset):
         finished = False
         while not finished:
             for tup in tups:
-                mask = [IMDB_ACM_DBLP.check_interval_overlap(tup, elem) for elem in tups]
-                merged.append(IMDB_ACM_DBLP.merge_tups(list(np.array(tups)[mask])))
+                mask = [IMDB_ACM_DBLP_from_GTN.check_interval_overlap(tup, elem) for elem in tups]
+                merged.append(IMDB_ACM_DBLP_from_GTN.merge_tups(list(np.array(tups)[mask])))
             merged = list(set(merged))
             for tup in merged:
-                mask = [IMDB_ACM_DBLP.check_interval_overlap(tup, elem) for elem in merged]
+                mask = [IMDB_ACM_DBLP_from_GTN.check_interval_overlap(tup, elem) for elem in merged]
                 true_counts = len([elem for elem in mask if elem == True])
                 if true_counts == 1:
                     finished = True
@@ -425,7 +425,7 @@ class IMDB_ACM_DBLP(InMemoryDataset):
         for key in edge_type_ids_dict.keys():
             tups.append(edge_type_ids_dict[key][0])
             tups.append(edge_type_ids_dict[key][1])
-        tups = IMDB_ACM_DBLP.infer_id_ranges(tups)
+        tups = IMDB_ACM_DBLP_from_GTN.infer_id_ranges(tups)
         node_type_mask = list()
         for i in range(len(tups)):
             node_type_mask = node_type_mask + [i] * (tups[i][1] - tups[i][0] + 1)
@@ -475,7 +475,7 @@ class DBLP_ACM_IMDB_from_NSHE(InMemoryDataset):
         node_features = torch.tensor(np.load(os.path.join(self.raw_dir, 'dw_emb_features.npy')))
         if self.ds_name == 'dblp':
             # === node type mask construction, 0=author, 1=paper, 2=conference
-            node_type_mask = torch.tensor(np.array([0]*2000 + [1]*9556 + [2]*20))
+            node_type_mask = torch.tensor(np.array([0] * 2000 + [1] * 9556 + [2] * 20))
 
             # --- edge index dictionary construction
             relations_df = pd.read_csv(os.path.join(self.raw_dir, 'relations.txt'),
@@ -577,10 +577,27 @@ class DBLP_ACM_IMDB_from_NSHE(InMemoryDataset):
         else:
             raise ValueError('DBLP_ACM_from_NSHE: unknown dataset name')
 
+        # node_labels_dict
+        id_label_df = pd.DataFrame(data=node_id_node_label.numpy().T,
+                                   columns=['id', 'label'])
+        train_id_label, test_id_label = train_test_split(id_label_df.to_numpy(),
+                                                         test_size=0.7,
+                                                         shuffle=True,
+                                                         stratify=id_label_df.to_numpy()[:, 1],
+                                                         random_state=0)
+        train_id_label, valid_id_label = train_test_split(train_id_label,
+                                                          test_size=0.3,
+                                                          shuffle=True,
+                                                          stratify=train_id_label[:, 1],
+                                                          random_state=0)
+
         data_list = [Data(node_features=node_features,
                           node_type_mask=node_type_mask,
                           edge_index_dict=edge_index_dict,
-                          node_id_node_label = node_id_node_label)]
+                          node_id_node_label=node_id_node_label,
+                          train_id_label=train_id_label,
+                          valid_id_label=valid_id_label,
+                          test_id_label=test_id_label)]
         if self.pre_filter is not None:
             data_list = [data for data in data_list if self.pre_filter(data)]
 
