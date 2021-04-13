@@ -34,3 +34,18 @@ def NSHE_or_GTN_dataset_to_edgelist(root='/home/ubuntu/msandal_code/PyG_playgrou
     save_under_name = os.path.join(output_dir, str(name) + '_from_' + str(from_paper).lower() + '_edgelist.txt')
     edge_df.to_csv(save_under_name, sep=' ', header=False, index=False)
     return
+
+
+def GTN_datasets_for_NSHE_prepa(root='/home/ubuntu/msandal_code/PyG_playground/data/IMDB_ACM_DBLP/',
+                                name='dblp',
+                                output_dir='/home/ubuntu/msandal_code/PyG_playground/competitors_perf/input_for_competitors'):
+    """
+    prepare input for the original NSHE network by transforming the PyG datasets into the required set of files
+    :param root: path where IMDB_ACM_DBLP_from_GTN data is stored/will be downloaded
+    :param name: name of the dataset to transform. must be one of ['acm', 'dblp', 'imdb']
+    :param output_dir: where to save the results to
+    :return:
+    """
+    root = os.path.join(root, str(name).upper())
+    ds = IMDB_ACM_DBLP_from_GTN(root=root, name=str(name).upper())[0]
+

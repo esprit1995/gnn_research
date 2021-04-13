@@ -11,23 +11,40 @@ DEFAULT_COMP_EMB_PATH = '/home/ubuntu/msandal_code/PyG_playground/competitors_pe
 DEFAULT_DATA_PATH = '/home/ubuntu/msandal_code/PyG_playground/data/'
 
 
-def evaluate_DeepWalk(path_to_embs: str = DEFAULT_COMP_EMB_PATH,
-                      dataset: str = 'dblp',
-                      from_paper: str = 'nshe'):
+def evaluate_competitor(path_to_embs: str = DEFAULT_COMP_EMB_PATH,
+                        dataset: str = 'dblp',
+                        from_paper: str = 'nshe',
+                        evaluate_architecture: str='nshe'):
     """
     evaluate clustering/classification on a chosen dataset using
     embeddings produced by DeepWalk
     :param path_to_embs: where the embeddings are stored
     :param dataset: which dataset to evaluate. Can be: ['dblp', 'imdb', 'acm']
     :param from_paper: from which paper the dataset version comes. Can be: ['nshe', 'gtn']
+    :param evaluate_architecture: which architecture to evaluate. Possible values: ['deepwalk', 'nshe']
     :return:
     """
-    emb_filename = dataset + "_from_" + from_paper + ".embeddings"
-    with open(os.path.join(path_to_embs, emb_filename)) as f:
-        lines = (line for line in f)
-        embs = np.loadtxt(lines, delimiter=' ', skiprows=1)
-    embs = embs[np.argsort(embs[:, 0])]  # sort by node id, which is the first column
-    embs = embs[:, 1:]  # remove the first column, as it is not a feature
+    dataset = str(dataset).lower()
+    from_paper = str(from_paper).lower()
+    evaluate_architecture = str(evaluate_architecture).lower()
+    assert dataset in ['dblp', 'acm', 'imdb'], \
+        'evaluate_competitor(): invalid dataset requested'
+    assert from_paper in ['nshe', 'gtn'], \
+        'evaluate_competitor(): invalid from_paper argument'
+    assert evaluate_architecture in ['nshe', 'deepwalk'], \
+        'evaluate_competitor(): cannot evaluate given architecture: ' + str(evaluate_architecture)
+    # === get embeddings
+    if evaluate_architecture == 'deepwalk':
+        emb_filename = dataset + "_from_" + from_paper + "_deepwalk.embeddings"
+        with open(os.path.join(path_to_embs, emb_filename)) as f:
+            lines = (line for line in f)
+            embs = np.loadtxt(lines, delimiter=' ', skiprows=1)
+        embs = embs[np.argsort(embs[:, 0])]  # sort by node id, which is the first column
+        embs = embs[:, 1:]  # remove the first column, as it is not a feature
+    elif evaluate_architecture == 'nshe':
+        emb_filename = dataset + "_from_" + from_paper + "_nshe_embeddings.npy"
+        embs = np.load(os.path.join(path_to_embs, emb_filename))
+
     if from_paper == 'nshe':
         dataset = DBLP_ACM_IMDB_from_NSHE(root=os.path.join(DEFAULT_DATA_PATH, 'NSHE'), name=dataset.lower())[0]
     elif from_paper == 'gtn':
