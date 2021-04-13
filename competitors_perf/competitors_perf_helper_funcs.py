@@ -3,7 +3,7 @@ import numpy as np
 import os
 
 from datasets import DBLP_ACM_IMDB_from_NSHE, IMDB_ACM_DBLP_from_GTN
-
+from pathlib import Path
 
 def NSHE_or_GTN_dataset_to_edgelist(root='/home/ubuntu/msandal_code/PyG_playground/data/NSHE',
                                     name='dblp',
@@ -49,3 +49,79 @@ def GTN_datasets_for_NSHE_prepa(root='/home/ubuntu/msandal_code/PyG_playground/d
     root = os.path.join(root, str(name).upper())
     ds = IMDB_ACM_DBLP_from_GTN(root=root, name=str(name).upper())[0]
 
+    if name == 'dblp':
+        # === prepare data structures: node2id, relation2id, relations.
+        relation2id = pd.DataFrame({'relation': ['pa', 'pc'],
+                                    'code': [0, 1]})
+        pa_rels = ds['edge_index_dict'][('1', '0')].numpy().T
+        pc_rels = ds['edge_index_dict'][('1', '2')].numpy().T
+        relations = pd.DataFrame(data=np.vstack([pa_rels, pc_rels]),
+                                 columns=['id1', 'id2'])
+        edge_type = [0]*pa_rels.shape[0] + [1]*pc_rels.shape[0]
+        relations['edge_type'] = pd.Series(edge_type)
+        relations['weird_crap'] = 1
+        node2id = pd.DataFrame({'node_code': ['a' + str(i) for i in range(4057)] +
+                                             ['p' + str(i) for i in range(14328)] +
+                                             ['c' + str(i) for i in range(20)],
+                                'node_id': list(range(4057 + 14328 + 20))})
+        # === saving
+        Path(os.path.join(output_dir, 'dblp_gtn')).mkdir(parents=True, exist_ok=True)
+        relations.to_csv(os.path.join(output_dir, 'dblp_gtn', 'relations.txt'),
+                         sep='\t',
+                         header=False,
+                         index=False)
+        node2id.to_csv(os.path.join(output_dir, 'dblp_gtn', 'node2id.txt'),
+                       sep='\t',
+                       header=False,
+                       index=False)
+        line_prepender(os.path.join(output_dir, 'dblp_gtn', 'node2id.txt'), str(node2id.shape[0]))
+        relation2id.to_csv(os.path.join(output_dir, 'dblp_gtn', 'relation2id.txt'),
+                           sep='\t',
+                           header=False,
+                           index=False)
+        line_prepender(os.path.join(output_dir, 'dblp_gtn', 'relation2id.txt'), str(relation2id.shape[0]))
+        return relation2id, relations, node2id
+    elif name == 'acm':
+        # === prepare data structures: node2id, relation2id, relations.
+        relation2id = pd.DataFrame({'relation': ['pa', 'ps'],
+                                    'code': [0, 1]})
+        pa_rels = ds['edge_index_dict'][('0', '1')].numpy().T
+        ps_rels = ds['edge_index_dict'][('0', '2')].numpy().T
+        relations = pd.DataFrame(data=np.vstack([pa_rels, ps_rels]),
+                                 columns=['id1', 'id2'])
+        edge_type = [0] * pa_rels.shape[0] + [1] * ps_rels.shape[0]
+        relations['edge_type'] = pd.Series(edge_type)
+        relations['weird_crap'] = 1
+        node2id = pd.DataFrame({'node_code': ['p' + str(i) for i in range(3025)] +
+                                             ['a' + str(i) for i in range(5912)] +
+                                             ['s' + str(i) for i in range(57)],
+                                'node_id': list(range(3025 + 5912 + 57))})
+        # === saving
+        Path(os.path.join(output_dir, 'acm_gtn')).mkdir(parents=True, exist_ok=True)
+        relations.to_csv(os.path.join(output_dir, 'acm_gtn', 'relations.txt'),
+                         sep='\t',
+                         header=False,
+                         index=False)
+        node2id.to_csv(os.path.join(output_dir, 'acm_gtn', 'node2id.txt'),
+                       sep='\t',
+                       header=False,
+                       index=False)
+        line_prepender(os.path.join(output_dir, 'acm_gtn', 'node2id.txt'), str(node2id.shape[0]))
+        relation2id.to_csv(os.path.join(output_dir, 'acm_gtn', 'relation2id.txt'),
+                           sep='\t',
+                           header=False,
+                           index=False)
+        line_prepender(os.path.join(output_dir, 'acm_gtn', 'relation2id.txt'), str(relation2id.shape[0]))
+        return relation2id, relations, node2id
+    else:
+        raise NotImplementedError('GTN_datasets_for_NSHE_prepa(): invalid dataset requested')
+
+
+# #######################################
+# Generic helper functions
+# #######################################
+def line_prepender(filename, line):
+    with open(filename, 'r+') as f:
+        content = f.read()
+        f.seek(0, 0)
+        f.write(line.rstrip('\r\n') + '\n' + content)

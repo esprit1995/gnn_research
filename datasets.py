@@ -201,7 +201,8 @@ class DBLP_MAGNN(InMemoryDataset):
 
 
 class IMDB_ACM_DBLP_from_GTN(InMemoryDataset):
-    # '1' = paper, '0' = author, '2' = conference
+    # '1' = paper, '0' = author, '2' = conference for DBLP
+    # '0' = paper, '1' = 'author', '2' = subject for ACM
     ggl_drive_url = 'https://drive.google.com/uc?export=download&id=1qOZ3QjqWMIIvWjzrIdRe3EA4iKzPi6S5'
     dblp_additional = 'https://raw.github.com/cynricfu/MAGNN/master/data/raw/DBLP/'
 
