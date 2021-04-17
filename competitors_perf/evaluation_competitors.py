@@ -14,7 +14,7 @@ DEFAULT_DATA_PATH = '/home/ubuntu/msandal_code/PyG_playground/data/'
 def evaluate_competitor(path_to_embs: str = DEFAULT_COMP_EMB_PATH,
                         dataset: str = 'dblp',
                         from_paper: str = 'nshe',
-                        evaluate_architecture: str='nshe'):
+                        evaluate_architecture: str = 'nshe'):
     """
     evaluate clustering/classification on a chosen dataset using
     embeddings produced by DeepWalk
@@ -46,19 +46,17 @@ def evaluate_competitor(path_to_embs: str = DEFAULT_COMP_EMB_PATH,
         embs = np.load(os.path.join(path_to_embs, emb_filename))
 
     if from_paper == 'nshe':
-        dataset = DBLP_ACM_IMDB_from_NSHE(root=os.path.join(DEFAULT_DATA_PATH, 'NSHE'), name=dataset.lower())[0]
+        dataset = DBLP_ACM_IMDB_from_NSHE(root=os.path.join(DEFAULT_DATA_PATH, 'NSHE'),
+                                          name=dataset.lower())[0]
     elif from_paper == 'gtn':
         dataset = IMDB_ACM_DBLP_from_GTN(root=os.path.join(DEFAULT_DATA_PATH, 'IMDB_ACM_DBLP', dataset.upper()),
                                          name=dataset.upper())[0]
-        dataset['train_id_label'] = dataset['train_id_label'].numpy().T
-        dataset['test_id_label'] = dataset['test_id_label'].numpy().T
-        dataset['valid_id_label'] = dataset['valid_id_label'].numpy().T
     id_label_clustering = np.vstack([dataset['train_id_label'],
                                      dataset['test_id_label'],
                                      dataset['valid_id_label']])
     id_label_classification_train = np.vstack([dataset['train_id_label'],
                                                dataset['valid_id_label']])
-    id_label_classification_test  = dataset['test_id_label']
+    id_label_classification_test = dataset['test_id_label']
     # --> clustering, NMI, ARI metrics of K-means
     NMI, ARI = evaluate_clustering(torch.tensor(embs), ids=id_label_clustering[:, 0],
                                    labels=id_label_clustering[:, 1])

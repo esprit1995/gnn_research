@@ -47,8 +47,8 @@ def logreg_node_classification(train_embeddings: torch.tensor, labels_train: np.
 
     print()
     cprint("--------------------------", color='blue')
-    cprint("Classification task, microF1:  " + str(microF1), color='blue')
-    cprint("Classification task, macroF1:  " + str(macroF1), color='blue')
+    cprint("Co-Classification task, microF1:  " + str(microF1), color='blue')
+    cprint("Co-Classification task, macroF1:  " + str(macroF1), color='blue')
     cprint("--------------------------", color='blue')
     print()
     return microF1, macroF1

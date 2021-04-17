@@ -2,6 +2,7 @@ import os
 import shutil
 import warnings
 import torch
+import numpy as np
 from datetime import datetime
 
 from training_routines import train_rgcn, train_gtn, train_han
@@ -44,15 +45,22 @@ def run_pipeline(args_, experiment_name_: str = ''):
 
     # downstream tasks evaluation
     warnings.simplefilter('ignore')
+    id_label_clustering = np.vstack([dataset['train_id_label'],
+                                     dataset['test_id_label'],
+                                     dataset['valid_id_label']])
+    id_label_classification_train = np.vstack([dataset['train_id_label'],
+                                               dataset['valid_id_label']])
+    id_label_classification_test = dataset['test_id_label']
     # --> clustering, NMI, ARI metrics of K-means
-    NMI, ARI = evaluate_clustering(output, ids=dataset['node_label_dict']['test'][0].numpy(),
-                                   labels=dataset['node_label_dict']['test'][1].numpy())
+    NMI, ARI = evaluate_clustering(output, ids=id_label_clustering[:, 0],
+                                   labels=id_label_clustering[:, 1])
     # --> classification, microF1, macroF1 metrics of logreg
     microF1, macroF1 = evaluate_classification(output,
-                                               ids_train=dataset['node_label_dict']['train'][0].numpy(),
-                                               labels_train=dataset['node_label_dict']['train'][1].numpy(),
-                                               ids_test=dataset['node_label_dict']['test'][0].numpy(),
-                                               labels_test=dataset['node_label_dict']['test'][1].numpy())
+                                               ids_train=id_label_classification_train[:, 0],
+                                               labels_train=id_label_classification_train[:, 1],
+                                               ids_test=id_label_classification_test[:, 0],
+                                               labels_test=id_label_classification_test[:, 1])
+
     warnings.simplefilter('default')
     performances_dict = {"NMI": NMI, "ARI": ARI,
                          "microF1": microF1, "macroF1": macroF1}

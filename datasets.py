@@ -325,9 +325,7 @@ class IMDB_ACM_DBLP_from_GTN(InMemoryDataset):
                                                               shuffle=True,
                                                               stratify=train_id_label[:, 1],
                                                               random_state=0)
-            train_id_label, valid_id_label, test_id_label = torch.from_numpy(train_id_label).T, \
-                                                            torch.from_numpy(valid_id_label).T, \
-                                                            torch.from_numpy(test_id_label).T
+
         data_list = [Data(node_type_mask=node_type_mask,
                           node_features=torch.tensor(data_dict['node_features']),
                           edge_index_dict=edge_index_dict,

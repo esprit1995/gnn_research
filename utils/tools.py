@@ -1,5 +1,4 @@
 import datetime
-import os
 import torch
 import numpy as np
 import multiprocessing as mp
@@ -342,10 +341,8 @@ def label_dict_to_metadata(label_dict: dict):
     :param label_dict: {'key': [[node ids], [labels]]
     :return:
     """
-    all_keys = [elem for elem in list(label_dict.keys()) if 'test' in elem]
-    all_ids = label_dict[all_keys[0]][0]
-    all_labels = label_dict[all_keys[0]][1]
+    all_keys = [elem for elem in list(label_dict.keys())]
+    ids_labels = label_dict[all_keys[0]]
     for idx in range(1, len(all_keys)):
-        all_ids = torch.cat([all_ids, label_dict[all_keys[idx]][0]])
-        all_labels = torch.cat([all_labels, label_dict[all_keys[idx]][1]])
-    return all_ids, all_labels
+        ids_labels = np.vstack([ids_labels, label_dict[all_keys[idx]]])
+    return ids_labels[:, 0], ids_labels[:, 1]

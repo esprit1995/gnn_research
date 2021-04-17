@@ -9,9 +9,9 @@ from utils.losses import triplet_loss_pure, triplet_loss_type_aware, push_pull_m
 
 def train_rgcn(args):
     # RGCN settings ##########
-    output_dim = 50
-    hidden_dim = 50
-    num_layers = 3
+    output_dim = 100
+    hidden_dim = 100
+    num_layers = 2
     coclustering_metapaths_dict = {'ACM': [('0', '1', '0', '2'), ('2', '0', '1')],
                                    'DBLP': [('0', '1', '2'), ('0', '1', '0'), ('1', '2', '1')]}
     corruption_positions_dict = {'ACM': [(1, 2), (2, 2)],
@@ -27,7 +27,6 @@ def train_rgcn(args):
     else:
         raise ValueError(
             'train_rgcn(): for requested paper ---' + str(args.from_paper) + '--- training RGCN is not possible')
-    setattr(ds, 'node_label_dict', node_label_dict)
     # sampling metapath instances for the cocluster push-pull loss
     if args.cocluster_loss:
         pos_instances = dict()
@@ -39,6 +38,7 @@ def train_rgcn(args):
                                                            args.dataset]
         except Exception as e:
             raise ValueError('co-clustering loss is not supported for dataset name ' + str(args.dataset))
+
         for mptemplate_idx in range(len(metapath_templates)):
             pos_instances[metapath_templates[mptemplate_idx]], \
             neg_instances[metapath_templates[mptemplate_idx]] = IMDB_DBLP_ACM_metapath_instance_sampler(

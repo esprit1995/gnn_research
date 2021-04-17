@@ -109,7 +109,6 @@ def GTN_for_rgcn(name: str, args):
     node_feature_matrix = node_type_encoding(dataset['node_features'].numpy(), id_type_mask.numpy())
 
     # node_labels_dict
-    labeled_type = id_type_mask[dataset['train_id_label'][0][0].item()].item()
     node_labels_dict = {ds_part: dataset[ds_part + '_id_label'] for ds_part in
                         ['train', 'valid', 'test']}
 
@@ -157,21 +156,8 @@ def NSHE_for_rgcn(name: str, data_dir: str = '/home/ubuntu/msandal_code/PyG_play
     edge_type = torch.tensor(edge_type)
 
     # node_labels_dict
-    id_label_df = pd.DataFrame(data=ds['node_id_node_label'].numpy().T,
-                               columns=['id', 'label'])
-    train_id_label, test_id_label = train_test_split(id_label_df.to_numpy(),
-                                                     test_size=0.7,
-                                                     shuffle=True,
-                                                     stratify=id_label_df.to_numpy()[:, 1],
-                                                     random_state=0)
-    train_id_label, valid_id_label = train_test_split(train_id_label,
-                                                      test_size=0.3,
-                                                      shuffle=True,
-                                                      stratify=train_id_label[:, 1],
-                                                      random_state=0)
-    node_labels_dict = {'train': torch.from_numpy(train_id_label).T,
-                        'valid': torch.from_numpy(valid_id_label).T,
-                        'test': torch.from_numpy(test_id_label).T}
+    node_labels_dict = {ds_part: ds[ds_part + '_id_label'] for ds_part in
+                        ['train', 'valid', 'test']}
 
     return ds, n_nodes_dict, node_labels_dict, id_type_mask, node_feature_matrix, edge_index, edge_type
 

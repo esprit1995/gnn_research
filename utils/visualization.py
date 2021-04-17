@@ -26,7 +26,7 @@ def draw_embeddings(embeddings: torch.tensor,
     compressed_embs = pca.fit_transform(embeddings.detach().numpy())
     df = pd.DataFrame(data=compressed_embs, columns=['pc1', 'pc2', 'pc3'])
     df['type'] = node_type_mask.numpy()
-    df['cluster'] = cluster_labels.numpy()
+    df['cluster'] = cluster_labels
     fig = px.scatter_3d(df, x='pc1', y='pc2', z='pc3',
                         color='cluster', symbol='type')
     fig.update_layout(margin=dict(l=0, r=0, b=0, t=0))

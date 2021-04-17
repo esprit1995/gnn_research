@@ -47,8 +47,8 @@ def kmeans_node_clustering(node_embeddings: torch.tensor,labels: np.array, runs:
 
     print()
     cprint("--------------------------", color='blue')
-    cprint("Clustering task, NMI:  " + str(mean(nmis)), color='blue')
-    cprint("Clustering task, ARI:  " + str(mean(aris)), color='blue')
+    cprint("Co-Clustering task, NMI:  " + str(mean(nmis)), color='blue')
+    cprint("Co-Clustering task, ARI:  " + str(mean(aris)), color='blue')
     cprint("--------------------------", color='blue')
     print()
     return mean(nmis), mean(aris)
