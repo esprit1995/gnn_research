@@ -9,8 +9,7 @@ from training_routines import train_rgcn, train_gtn, train_han
 from utils.arguments import model_run_argparse
 from utils.visualization import draw_embeddings
 from torch.utils.tensorboard import SummaryWriter
-from downstream_tasks.node_clustering import evaluate_clustering
-from downstream_tasks.node_classification import evaluate_classification
+from downstream_tasks.evaluation_funcs import evaluate_clu_cla_GTN_NSHE_datasets
 from utils.results_recording_local import record_experiment_locally
 
 
@@ -45,21 +44,7 @@ def run_pipeline(args_, experiment_name_: str = ''):
 
     # downstream tasks evaluation
     warnings.simplefilter('ignore')
-    id_label_clustering = np.vstack([dataset['train_id_label'],
-                                     dataset['test_id_label'],
-                                     dataset['valid_id_label']])
-    id_label_classification_train = np.vstack([dataset['train_id_label'],
-                                               dataset['valid_id_label']])
-    id_label_classification_test = dataset['test_id_label']
-    # --> clustering, NMI, ARI metrics of K-means
-    NMI, ARI = evaluate_clustering(output, ids=id_label_clustering[:, 0],
-                                   labels=id_label_clustering[:, 1])
-    # --> classification, microF1, macroF1 metrics of logreg
-    microF1, macroF1 = evaluate_classification(output,
-                                               ids_train=id_label_classification_train[:, 0],
-                                               labels_train=id_label_classification_train[:, 1],
-                                               ids_test=id_label_classification_test[:, 0],
-                                               labels_test=id_label_classification_test[:, 1])
+    NMI, ARI, microF1, macroF1 = evaluate_clu_cla_GTN_NSHE_datasets(dataset, output)
 
     warnings.simplefilter('default')
     performances_dict = {"NMI": NMI, "ARI": ARI,

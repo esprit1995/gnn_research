@@ -1,11 +1,10 @@
-import pandas as pd
 import numpy as np
 import os
 import torch
+from downstream_tasks.evaluation_funcs import evaluate_clu_cla_GTN_NSHE_datasets
 from downstream_tasks.node_clustering import evaluate_clustering
 from downstream_tasks.node_classification import evaluate_classification
 from datasets import DBLP_ACM_IMDB_from_NSHE, IMDB_ACM_DBLP_from_GTN
-from data_transforms import NSHE_for_rgcn, GTN_for_rgcn
 
 DEFAULT_COMP_EMB_PATH = '/home/ubuntu/msandal_code/PyG_playground/competitors_perf/competitor_embeddings'
 DEFAULT_DATA_PATH = '/home/ubuntu/msandal_code/PyG_playground/data/'
@@ -44,6 +43,8 @@ def evaluate_competitor(path_to_embs: str = DEFAULT_COMP_EMB_PATH,
     elif evaluate_architecture == 'nshe':
         emb_filename = dataset + "_from_" + from_paper + "_nshe_embeddings.npy"
         embs = np.load(os.path.join(path_to_embs, emb_filename))
+    else:
+        raise NotImplementedError('evaluate_competitor(): evaluation not supported for architecture: ' + str(evaluate_architecture))
 
     if from_paper == 'nshe':
         dataset = DBLP_ACM_IMDB_from_NSHE(root=os.path.join(DEFAULT_DATA_PATH, 'NSHE'),
@@ -51,18 +52,4 @@ def evaluate_competitor(path_to_embs: str = DEFAULT_COMP_EMB_PATH,
     elif from_paper == 'gtn':
         dataset = IMDB_ACM_DBLP_from_GTN(root=os.path.join(DEFAULT_DATA_PATH, 'IMDB_ACM_DBLP', dataset.upper()),
                                          name=dataset.upper())[0]
-    id_label_clustering = np.vstack([dataset['train_id_label'],
-                                     dataset['test_id_label'],
-                                     dataset['valid_id_label']])
-    id_label_classification_train = np.vstack([dataset['train_id_label'],
-                                               dataset['valid_id_label']])
-    id_label_classification_test = dataset['test_id_label']
-    # --> clustering, NMI, ARI metrics of K-means
-    NMI, ARI = evaluate_clustering(torch.tensor(embs), ids=id_label_clustering[:, 0],
-                                   labels=id_label_clustering[:, 1])
-    # --> classification, microF1, macroF1 metrics of logreg
-    microF1, macroF1 = evaluate_classification(torch.tensor(embs),
-                                               ids_train=id_label_classification_train[:, 0],
-                                               labels_train=id_label_classification_train[:, 1],
-                                               ids_test=id_label_classification_test[:, 0],
-                                               labels_test=id_label_classification_test[:, 1])
+    evaluate_clu_cla_GTN_NSHE_datasets(dataset, embs)
