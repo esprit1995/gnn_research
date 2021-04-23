@@ -3,6 +3,10 @@ import shutil
 import warnings
 import torch
 import numpy as np
+
+import tensorflow as tf
+import tensorboard as tb
+
 from datetime import datetime
 
 from training_routines import train_rgcn, train_gtn, train_han
@@ -14,6 +18,7 @@ from utils.results_recording_local import record_experiment_locally
 
 
 def run_pipeline(args_, experiment_name_: str = ''):
+    tf.io.gfile = tb.compat.tensorflow_stub.io.gfile
     print(experiment_name_)
     torch.manual_seed(args_.random_seed)
 
@@ -26,8 +31,8 @@ def run_pipeline(args_, experiment_name_: str = ''):
     # embeddings are stored in :torch.tensor:: output
     if args_.model == 'RGCN':
         output, metadata_ids, metadata_labels, metadata_types, dataset = train_rgcn(args_)
-    # elif args_.model == 'GTN':
-    #     output, metadata = train_gtn(args_)
+    elif args_.model == 'GTN':
+        output, metadata_ids, metadata_labels, metadata_types, dataset = train_gtn(args_)
     # elif args_.model == 'HAN':
     #     output, metadata = train_han(args_)
     else:

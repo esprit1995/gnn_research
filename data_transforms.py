@@ -126,15 +126,16 @@ def GTN_for_rgcn(name: str, args):
     return dataset, n_nodes_dict, node_labels_dict, id_type_mask, node_feature_matrix, edge_index, edge_type
 
 
-def NSHE_for_rgcn(name: str, data_dir: str = '/home/ubuntu/msandal_code/PyG_playground/data/NSHE'):
+def NSHE_for_rgcn(name: str, args, data_dir: str = '/home/ubuntu/msandal_code/PyG_playground/data/NSHE'):
     """
     prepare datasets from the NSHE paper for the RGCN network
     :param name: name of the dataset. must be one of ['dblp', 'imdb', 'acm']
+    :param args: arguments of the run
     :param data_dir: directory where the NSHE datasets are stored/should be downloaded to
     :return: the necessary data structures
     """
     name = name.lower()
-    ds = DBLP_ACM_IMDB_from_NSHE(root=data_dir, name=name)[0]
+    ds = DBLP_ACM_IMDB_from_NSHE(root=data_dir, name=name, redownload=args.redownload_data)[0]
 
     # n_nodes_dict
     node_count_info = pd.Series(ds['node_type_mask']).value_counts()
@@ -190,6 +191,10 @@ def GTN_for_gtn(name: str, data_dir: str = '/home/ubuntu/msandal_code/PyG_playgr
     edge_index = torch.cat(edge_index, dim=1)
     edge_type = torch.tensor(edge_type)
 
+    # node_labels_dict
+    node_labels_dict = {ds_part: dataset[ds_part + '_id_label'] for ds_part in
+                        ['train', 'valid', 'test']}
+
     # id_type_mask, node_feature_matrix
     id_type_mask = dataset['node_type_mask']
 
@@ -210,7 +215,12 @@ def GTN_for_gtn(name: str, data_dir: str = '/home/ubuntu/msandal_code/PyG_playgr
             A = torch.cat([A, torch.from_numpy(edge.todense()).type(torch.FloatTensor).unsqueeze(-1)], dim=-1)
     A = torch.cat([A, torch.eye(num_nodes).type(torch.FloatTensor).unsqueeze(-1)], dim=-1)
 
-    return A, node_features, num_classes, edge_index, edge_type, id_type_mask
+    return A, node_labels_dict,  node_features, num_classes, edge_index, edge_type, id_type_mask, dataset
+
+
+# #############################################################
+# Architecture: HAN. Datasets from papers: GTN                #
+# #############################################################
 
 
 def ACM_HAN_for_han(data_dir: str = '/home/ubuntu/msandal_code/PyG_playground/data/ACM_HAN'):

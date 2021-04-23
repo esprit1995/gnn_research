@@ -20,9 +20,10 @@ def evaluate_competitor(path_to_embs: str = DEFAULT_COMP_EMB_PATH,
     :param path_to_embs: where the embeddings are stored
     :param dataset: which dataset to evaluate. Can be: ['dblp', 'imdb', 'acm']
     :param from_paper: from which paper the dataset version comes. Can be: ['nshe', 'gtn']
-    :param evaluate_architecture: which architecture to evaluate. Possible values: ['deepwalk', 'nshe']
+    :param evaluate_architecture: which architecture to evaluate. Possible values: ['deepwalk', 'nshe', 'hegan_gen', 'hegan_dis']
     :return:
     """
+    # === prepare and validate the arguments
     dataset = str(dataset).lower()
     from_paper = str(from_paper).lower()
     evaluate_architecture = str(evaluate_architecture).lower()
@@ -30,11 +31,19 @@ def evaluate_competitor(path_to_embs: str = DEFAULT_COMP_EMB_PATH,
         'evaluate_competitor(): invalid dataset requested'
     assert from_paper in ['nshe', 'gtn'], \
         'evaluate_competitor(): invalid from_paper argument'
-    assert evaluate_architecture in ['nshe', 'deepwalk'], \
+    assert evaluate_architecture in ['nshe', 'deepwalk', 'hegan_gen', 'hegan_dis'], \
         'evaluate_competitor(): cannot evaluate given architecture: ' + str(evaluate_architecture)
+
     # === get embeddings
     if evaluate_architecture == 'deepwalk':
         emb_filename = dataset + "_from_" + from_paper + "_deepwalk.embeddings"
+        with open(os.path.join(path_to_embs, emb_filename)) as f:
+            lines = (line for line in f)
+            embs = np.loadtxt(lines, delimiter=' ', skiprows=1)
+        embs = embs[np.argsort(embs[:, 0])]  # sort by node id, which is the first column
+        embs = embs[:, 1:]  # remove the first column, as it is not a feature
+    elif evaluate_architecture in ['hegan_dis', 'hegan_gen']:
+        emb_filename = dataset + "_from_" + from_paper + "_" + evaluate_architecture + '.emb'
         with open(os.path.join(path_to_embs, emb_filename)) as f:
             lines = (line for line in f)
             embs = np.loadtxt(lines, delimiter=' ', skiprows=1)
@@ -46,10 +55,13 @@ def evaluate_competitor(path_to_embs: str = DEFAULT_COMP_EMB_PATH,
     else:
         raise NotImplementedError('evaluate_competitor(): evaluation not supported for architecture: ' + str(evaluate_architecture))
 
+    # === fetch PyG dataset which we evaluate
     if from_paper == 'nshe':
         dataset = DBLP_ACM_IMDB_from_NSHE(root=os.path.join(DEFAULT_DATA_PATH, 'NSHE'),
                                           name=dataset.lower())[0]
     elif from_paper == 'gtn':
         dataset = IMDB_ACM_DBLP_from_GTN(root=os.path.join(DEFAULT_DATA_PATH, 'IMDB_ACM_DBLP', dataset.upper()),
                                          name=dataset.upper())[0]
+
+    # === evaluation
     evaluate_clu_cla_GTN_NSHE_datasets(dataset, embs)

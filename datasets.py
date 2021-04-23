@@ -433,15 +433,18 @@ class IMDB_ACM_DBLP_from_GTN(InMemoryDataset):
 
 
 class DBLP_ACM_IMDB_from_NSHE(InMemoryDataset):
-    def __init__(self, root, name, transform=None, pre_transform=None):
+    def __init__(self, root, name, redownload: bool = False, transform=None, pre_transform=None):
         """
         :param root: see PyG docs
         :param name: which dataset to fetch. must be one of ['acm', 'dblp', 'imdb']
+        :param redownload: whether do redownload data even if it has been processed before
         :param transform: see PyG docs
         :param pre_transform: see PyG docs
         """
         assert name in ['acm', 'dblp', 'imdb'], \
             "DBLP_ACM_IMDB_from_NSHE: name argument must be one of ['acm', 'dblp', 'imdb']"
+        if redownload and os.path.exists(root):
+            shutil.rmtree(root)
         self.github_url = "https://raw.github.com/Andy-Border/NSHE/master/data"
         self.ds_name = name
         self.data_url = '/'.join([self.github_url, self.ds_name])

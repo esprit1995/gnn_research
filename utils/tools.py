@@ -7,7 +7,6 @@ from torch_geometric.typing import Adj
 from sklearn.preprocessing import OneHotEncoder
 
 from typing import Dict, Tuple, Any
-from datasets import IMDB_ACM_DBLP_from_GTN
 
 
 def heterogeneous_negative_sampling_naive(edge_index: Adj,

@@ -4,6 +4,12 @@ import os
 
 from datasets import DBLP_ACM_IMDB_from_NSHE, IMDB_ACM_DBLP_from_GTN
 from pathlib import Path
+from sklearn.decomposition import PCA
+
+
+# #######################################
+# funcs to transform data for specific architecture
+# #######################################
 
 def NSHE_or_GTN_dataset_to_edgelist(root='/home/ubuntu/msandal_code/PyG_playground/data/NSHE',
                                     name='dblp',
@@ -57,7 +63,7 @@ def GTN_datasets_for_NSHE_prepa(root='/home/ubuntu/msandal_code/PyG_playground/d
         pc_rels = ds['edge_index_dict'][('1', '2')].numpy().T
         relations = pd.DataFrame(data=np.vstack([pa_rels, pc_rels]),
                                  columns=['id1', 'id2'])
-        edge_type = [0]*pa_rels.shape[0] + [1]*pc_rels.shape[0]
+        edge_type = [0] * pa_rels.shape[0] + [1] * pc_rels.shape[0]
         relations['edge_type'] = pd.Series(edge_type)
         relations['weird_crap'] = 1
         node2id = pd.DataFrame({'node_code': ['a' + str(i) for i in range(4057)] +
@@ -115,6 +121,59 @@ def GTN_datasets_for_NSHE_prepa(root='/home/ubuntu/msandal_code/PyG_playground/d
         return relation2id, relations, node2id
     else:
         raise NotImplementedError('GTN_datasets_for_NSHE_prepa(): invalid dataset requested')
+
+
+def NSHE_or_GTN_dataset_for_HeGAN(root='/home/ubuntu/msandal_code/PyG_playground/data/NSHE',
+                                  name='dblp',
+                                  from_paper='nshe',
+                                  output_dir='/home/ubuntu/msandal_code/PyG_playground/competitors_perf/input_for_competitors'):
+    """
+    helper function to prepare datasets from NSHE or GTN papers for embedding by HeGAN
+    :param root: where to find/download NSHE dataset in question
+    :param name: which dataset to fetch. must be one of ['dblp', 'imdb', 'acm']
+    :param from_paper: from which paper to take the datasets. must be either 'nshe' or 'gtn'
+    :param output_dir: where to save the resulting edge list
+    :return:
+    """
+    assert str(from_paper).lower() in ['nshe', 'gtn'], \
+        'NSHE_dataset_to_edgelist(): invalid paper'
+    assert str(name).lower() in ['dblp', 'acm', 'imdb'], \
+        'NSHE_dataset_to_edgelist(): invalid dataset name required'
+    if from_paper.lower() == 'nshe':
+        ds = DBLP_ACM_IMDB_from_NSHE(root=root, name=str(name).lower())[0]
+    else:
+        ds = IMDB_ACM_DBLP_from_GTN(root=root, name=str(name).upper())[0]
+    edge_types = list(ds['edge_index_dict'].keys())
+    edge_types_to_int = {edge_types[i]: i for i in range(len(edge_types))}
+
+    # ===> obtain a frame containing graph info in triples: source_id // target_id // edge_type (int)
+    triples = pd.DataFrame(data=ds['edge_index_dict'][edge_types[0]].numpy().T, columns=['source_id', 'target_id'])
+    triples['edge_type'] = edge_types_to_int[edge_types[0]]
+    for i in range(1, len(edge_types)):
+        to_append = pd.DataFrame(data=ds['edge_index_dict'][edge_types[i]].numpy().T,
+                                 columns=['source_id', 'target_id'])
+        to_append['edge_type'] = edge_types_to_int[edge_types[i]]
+        triples = triples.append(to_append, ignore_index=True)
+
+    # ===> obtain node features in format: node_id feat_1 feat_2 ... feat_n
+    node_features = ds['node_features'].numpy()
+    ids = np.array(list(range(node_features.shape[0])))
+    node_feature_df = pd.DataFrame(data=np.c_[ids, node_features])
+
+    # ===> save results in folder
+    saving_path = os.path.join(output_dir, '_'.join([name, from_paper, 'for_HeGAN']))
+    Path(saving_path).mkdir(parents=True, exist_ok=True)
+    triples.to_csv(os.path.join(saving_path, name + '_' + from_paper + '_triple.dat'),
+                   sep=' ',
+                   header=False,
+                   index=False)
+    node_feature_df.to_csv(os.path.join(saving_path, name + '_' + from_paper + '_pre_train.emb'),
+                           sep=' ',
+                           header=False,
+                           index=False)
+    line_prepender(os.path.join(saving_path, name + '_' + from_paper + '_pre_train.emb'),
+                   str(node_feature_df.shape[0]) + ' ' + str(node_feature_df.shape[1] - 1))
+    return node_feature_df, triples
 
 
 # #######################################
