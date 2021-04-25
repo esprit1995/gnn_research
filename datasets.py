@@ -311,9 +311,9 @@ class IMDB_ACM_DBLP_from_GTN(InMemoryDataset):
                                                 data=edge_index_dict[('1', '2')].numpy().T)
                 paper_label = local_conf_paper.merge(conf_local_label, on='conf_local', how='inner')[['paper', 'label']]
                 node_id_node_label = np.vstack([paper_label.to_numpy(),
-                                                train_id_label.numpy().T,
-                                                valid_id_label.numpy().T,
-                                                test_id_label.numpy().T])
+                                                train_id_label,
+                                                valid_id_label,
+                                                test_id_label])
 
             train_id_label, test_id_label = train_test_split(node_id_node_label,
                                                              test_size=0.7,
