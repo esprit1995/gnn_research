@@ -281,9 +281,9 @@ class IMDB_ACM_DBLP_from_GTN(InMemoryDataset):
                     .agg({'label': lambda labels: labels.value_counts().index[0]}) \
                     .reset_index(drop=False)
                 node_id_node_label = np.vstack([author_label.to_numpy(),
-                                                train_id_label.numpy().T,
-                                                valid_id_label.numpy().T,
-                                                test_id_label.numpy().T])
+                                                train_id_label,
+                                                valid_id_label,
+                                                test_id_label])
             if self.ds_name == 'DBLP':
                 paper_author = pd.DataFrame(columns=['paper', 'author'],
                                             data=IMDB_ACM_DBLP_from_GTN.read_2colInt_txt(
