@@ -16,7 +16,7 @@ def evaluate_competitor(path_to_embs: str = DEFAULT_COMP_EMB_PATH,
                         evaluate_architecture: str = 'nshe'):
     """
     evaluate clustering/classification on a chosen dataset using
-    embeddings produced by DeepWalk
+    embeddings produced by different GNN architectures
     :param path_to_embs: where the embeddings are stored
     :param dataset: which dataset to evaluate. Can be: ['dblp', 'imdb', 'acm']
     :param from_paper: from which paper the dataset version comes. Can be: ['nshe', 'gtn']

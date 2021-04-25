@@ -206,7 +206,7 @@ class IMDB_ACM_DBLP_from_GTN(InMemoryDataset):
     ggl_drive_url = 'https://drive.google.com/uc?export=download&id=1qOZ3QjqWMIIvWjzrIdRe3EA4iKzPi6S5'
     dblp_additional = 'https://raw.github.com/cynricfu/MAGNN/master/data/raw/DBLP/'
 
-    def __init__(self, root: str, name: str, multi_type_labels: bool = False, redownload: bool = False,
+    def __init__(self, root: str, name: str, multi_type_labels: bool = True, redownload: bool = False,
                  transform=None, pre_transform=None):
         """
         :param root: see PyG docs
@@ -263,9 +263,9 @@ class IMDB_ACM_DBLP_from_GTN(InMemoryDataset):
                 data_dict[re.sub('.pkl', '', file)] = pkl.load(f)
         node_type_mask = IMDB_ACM_DBLP_from_GTN.infer_type_mask_from_edges(data_dict['edges'])
         edge_index_dict = IMDB_ACM_DBLP_from_GTN.get_edge_index_dict(data_dict['edges'], node_type_mask)
-        train_id_label = torch.tensor(np.array(data_dict['labels'][0]).T)
-        valid_id_label = torch.tensor(np.array(data_dict['labels'][1]).T)
-        test_id_label = torch.tensor(np.array(data_dict['labels'][2]).T)
+        train_id_label = np.array(data_dict['labels'][0])
+        valid_id_label = np.array(data_dict['labels'][1])
+        test_id_label = np.array(data_dict['labels'][2])
 
         # infer additional labels for multi-type clustering tasks
         if self.multi_type_labels:
