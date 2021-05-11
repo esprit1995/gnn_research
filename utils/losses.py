@@ -132,8 +132,8 @@ def push_pull_metapath_instance_loss(pos_instances: list, corrupted_instances: l
 
     # ----- putting the contributions together and returning
     # pytorch-tensorflow comparison prints
-    print(out_p.reshape(-1))
-    print(out_n.reshape(-1))
+    # print(out_p.reshape(-1))
+    # print(out_n.reshape(-1))
     return -out_p.mean() - out_n.mean()
 
 

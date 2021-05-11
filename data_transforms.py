@@ -203,14 +203,14 @@ def NSHE_for_gtn(name: str, data_dir: str = '/home/ubuntu/msandal_code/PyG_playg
 
     def edge_index_to_dense_adj_matrix(n_nodes: int, edge_index: np.array):
         adj_matrix = np.zeros((n_nodes, n_nodes))
-        np.put(adj_matrix, edge_index, 1)
+        adj_matrix[edge_index[0], edge_index[1]] = 1
         return adj_matrix
     A = None
     for edge_type in list(dataset['edge_index_dict'].keys()):
         if A is None:
-            A = torch.from_numpy(edge_index_to_dense_adj_matrix(n_nodes, dataset['edge_index_dict'][edge_type])).unsqueeze(-1)
+            A = torch.from_numpy(edge_index_to_dense_adj_matrix(n_nodes, dataset['edge_index_dict'][edge_type].numpy())).unsqueeze(-1)
         else:
-            A = torch.cat([A, torch.from_numpy(edge_index_to_dense_adj_matrix(n_nodes, dataset['edge_index_dict'][edge_type])).unsqueeze(-1)], dim=-1)
+            A = torch.cat([A, torch.from_numpy(edge_index_to_dense_adj_matrix(n_nodes, dataset['edge_index_dict'][edge_type].numpy())).unsqueeze(-1)], dim=-1)
     A = torch.cat([A, torch.eye(n_nodes).type(torch.FloatTensor).unsqueeze(-1)], dim=-1)
     return A, node_labels_dict, node_features, num_classes, edge_index, edge_type, id_type_mask, dataset
 
