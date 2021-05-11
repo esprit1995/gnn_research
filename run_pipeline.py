@@ -30,9 +30,9 @@ def run_pipeline(args_, experiment_name_: str = ''):
     # model training: obtain node embeddings of a given dataset by a give architecture
     # embeddings are stored in :torch.tensor:: output
     if args_.model == 'RGCN':
-        output, metadata_ids, metadata_labels, metadata_types, dataset = train_rgcn(args_)
+        output, metadata_ids, metadata_labels, metadata_types, dataset, epochs_num, metrics = train_rgcn(args_)
     elif args_.model == 'GTN':
-        output, metadata_ids, metadata_labels, metadata_types, dataset = train_gtn(args_)
+        output, metadata_ids, metadata_labels, metadata_types, dataset, epochs_num, metrics = train_gtn(args_)
     # elif args_.model == 'HAN':
     #     output, metadata = train_han(args_)
     else:
@@ -50,13 +50,15 @@ def run_pipeline(args_, experiment_name_: str = ''):
     # downstream tasks evaluation
     warnings.simplefilter('ignore')
     NMI, ARI, microF1, macroF1 = evaluate_clu_cla_GTN_NSHE_datasets(dataset, output)
-
+    print('best performance (NMI clu) achieved at epoch: ' + str(epochs_num[metrics.index(max(metrics))]))
+    print('and is equal to: ' + str(max(metrics)))
     warnings.simplefilter('default')
     performances_dict = {"NMI": NMI, "ARI": ARI,
                          "microF1": microF1, "macroF1": macroF1}
 
     # recording experiment results locally
-    record_experiment_locally(os.getcwd(), experiment_name_, output, performances_dict, args_,
+    record_experiment_locally(os.getcwd(), experiment_name_, output, performances_dict,
+                              [epochs_num, metrics], args_,
                               additional_info=str(args_.model) + "_typeAwareBool" + str(args_.type_aware_loss))
 
 

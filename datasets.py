@@ -273,9 +273,9 @@ class IMDB_ACM_DBLP_from_GTN(InMemoryDataset):
                 paper_author = pd.DataFrame(columns=['paper', 'author'],
                                             data=edge_index_dict[('0', '1')].numpy().T)
                 paper_label = pd.DataFrame(columns=['paper', 'label'],
-                                           data=np.vstack([train_id_label.numpy().T,
-                                                           valid_id_label.numpy().T,
-                                                           test_id_label.numpy().T]))
+                                           data=np.vstack([train_id_label,
+                                                           valid_id_label,
+                                                           test_id_label]))
                 author_label = paper_author.merge(paper_label, on='paper', how='inner').drop(columns=['paper'])
                 author_label = author_label.groupby(['author']) \
                     .agg({'label': lambda labels: labels.value_counts().index[0]}) \

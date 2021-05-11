@@ -21,6 +21,8 @@ def model_run_argparse():
                         help='which model to use. available: any of [RGCN, GTN]. Default=RGCN')
     parser.add_argument('--epochs', type=int, default=100,
                         help='number of epochs to train. Default 100')
+    parser.add_argument('--downstream_eval_freq', type=int, default=10,
+                        help='how frequently (in epochs) to evaluate downstream tasks.')
     parser.add_argument('--random_seed', type=int, default=10,
                         help='reproducibility: seed for random generators. Default 10')
     parser.add_argument('--type_aware_loss', action='store_true',

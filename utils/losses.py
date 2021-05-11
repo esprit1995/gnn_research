@@ -3,6 +3,11 @@ import torch.nn.functional as F
 import numpy as np
 from typing import Tuple
 
+import os
+
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+import tensorflow as tf
+
 
 # -----------------------------------------------------------
 #                   LOSS FUNCTIONS
@@ -104,8 +109,8 @@ def push_pull_metapath_instance_loss(pos_instances: list, corrupted_instances: l
     left_part_neg = node_embeddings[corrupted_nodes]
     right_part_neg = node_embeddings[normal_nodes]
     out_n = F.logsigmoid(
-        -torch.bmm(left_part_neg.view(n_corrupted*n_normal*len(pos_instances), 1, -1),
-                   right_part_neg.view(n_corrupted*n_normal*len(pos_instances), -1, 1)))
+        -torch.bmm(left_part_neg.view(n_corrupted * n_normal * len(pos_instances), 1, -1),
+                   right_part_neg.view(n_corrupted * n_normal * len(pos_instances), -1, 1)))
 
     # ----- computing loss contribution from the positive instances
     pos_tensor = torch.tensor(pos_instances)
@@ -126,4 +131,81 @@ def push_pull_metapath_instance_loss(pos_instances: list, corrupted_instances: l
                   right_part_pos.view(int(path_length * (path_length - 1) / 2) * len(pos_instances), -1, 1)))
 
     # ----- putting the contributions together and returning
+    # pytorch-tensorflow comparison prints
+    print(out_p.reshape(-1))
+    print(out_n.reshape(-1))
     return -out_p.mean() - out_n.mean()
+
+
+def push_pull_metapath_instance_loss_tf(pos_instances: list, corrupted_instances: list,
+                                        corrupted_positions: tuple, node_embeddings):
+    """
+    compute the push-pull loss (logsigmoid loss) over the given metapath instances.
+    assumes that positive and negative metapath instances have the same template
+    :param pos_instances: list of tuples containing positive metapath instances
+    :param corrupted_instances: list of tuples containing corrupted metapath instances
+    :param corrupted_positions: tuple (min_idx, max_idx) indicating indices at which the nodes had been corrupted
+                                !!!MUST BE THE SAME FOR ALL CORRUPTED INSTANCES!!! Corrupting positive instances in
+                                different positions calls for the computation of a separate push-pull loss!
+    :param node_embeddings: current embeddings of the nodes
+    :return: push-pull loss
+    """
+    path_length = len(pos_instances[0])
+    embed_dim = node_embeddings.shape[1].value
+
+    n_corrupted = corrupted_positions[1] - corrupted_positions[0] + 1
+    n_normal = path_length - n_corrupted
+
+    # ----- computing loss contribution from the corrupted instances
+    neg_tensor = tf.convert_to_tensor(corrupted_instances)
+    corrupted_nodes = neg_tensor[:, corrupted_positions[0]:(corrupted_positions[1] + 1)]
+    normal_indices = [elem for elem in range(neg_tensor.shape[1].value) \
+                      if
+                      elem < corrupted_positions[0] or elem > corrupted_positions[1]]
+    normal_nodes = tf.gather(neg_tensor, normal_indices, axis=1)
+    # prepare tensors for computing dot product: every normal node vs every corrupted node
+    corrupted_nodes = tf.reshape(tf.repeat(corrupted_nodes, n_normal, 1), (-1,))
+    normal_nodes = tf.reshape(tf.repeat(normal_nodes, n_corrupted, 0), (-1,))
+    left_part_neg = tf.gather(node_embeddings, corrupted_nodes.eval(session=tf.compat.v1.Session()), axis=0)
+    right_part_neg = tf.gather(node_embeddings, normal_nodes.eval(session=tf.compat.v1.Session()), axis=0)
+    # out_n = F.logsigmoid(
+    #     -torch.bmm(left_part_neg.view(n_corrupted*n_normal*len(pos_instances), 1, -1),
+    #                right_part_neg.view(n_corrupted*n_normal*len(pos_instances), -1, 1)))
+    out_n = tf.math.log_sigmoid(
+        -tf.matmul(tf.reshape(left_part_neg, (n_corrupted * n_normal * len(pos_instances), 1, -1)),
+                   tf.reshape(right_part_neg, (n_corrupted * n_normal * len(pos_instances), -1, 1))))
+    # ----- computing loss contribution from the positive instances
+    pos_tensor = tf.convert_to_tensor(pos_instances)
+    # computing individual dot products
+    left_part_pos = tf.reshape(tf.repeat(tf.gather(node_embeddings,
+                                                   pos_tensor[:, 0].eval(session=tf.compat.v1.Session()),
+                                                   axis=0), path_length - 1, 0), (-1, embed_dim))
+    for i in range(1, path_length):
+        additional_to_repeat = tf.gather(node_embeddings,
+                                         pos_tensor[:, i].eval(session=tf.compat.v1.Session()),
+                                         axis=0)
+        left_part_pos = tf.concat([left_part_pos,
+                                   tf.reshape(tf.repeat(additional_to_repeat, path_length - 1 - i, 0),
+                                              (-1, embed_dim))
+                                   ],
+                                  axis=0)
+
+    right_part_unstacked = tf.gather(node_embeddings,
+                                     tf.reshape(pos_tensor[:, 1:], (-1,)).eval(session=tf.compat.v1.Session()),
+                                     axis=0)
+    right_part_pos = tf.concat([right_part_unstacked], axis=0)
+    for i in range(1, path_length - 1):
+        part_to_concat = tf.gather(node_embeddings,
+                                   tf.reshape(pos_tensor[:, 1 + i:], (-1,)).eval(session=tf.compat.v1.Session()),
+                                   axis=0)
+        right_part_pos = tf.concat([right_part_pos] + [part_to_concat], axis=0)
+
+    out_p = tf.math.log_sigmoid(
+        tf.matmul(tf.reshape(left_part_pos, (int(path_length * (path_length - 1) / 2) * len(pos_instances), 1, -1)),
+                  tf.reshape(right_part_pos, (int(path_length * (path_length - 1) / 2) * len(pos_instances), -1, 1))))
+    # ----- putting the contributions together and returning
+    # tensorflow-pytorch comparison prints
+    # print(out_p.eval(session=tf.compat.v1.Session()).reshape(-1))
+    # print(out_n.eval(session=tf.compat.v1.Session()).reshape(-1))
+
+    return tf.reduce_mean(-out_p) - tf.reduce_mean(out_n)

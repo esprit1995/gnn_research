@@ -6,7 +6,6 @@ import os
 import pickle
 from datasets import DBLP_MAGNN, IMDB_ACM_DBLP_from_GTN, ACM_HAN, DBLP_ACM_IMDB_from_NSHE
 from sklearn.decomposition import PCA
-from sklearn.model_selection import train_test_split
 from utils.tools import node_type_encoding
 
 
@@ -167,9 +166,58 @@ def NSHE_for_rgcn(name: str, args, data_dir: str = '/home/ubuntu/msandal_code/Py
 # Architecture: GTN. Datasets from papers: GTN                #
 # #############################################################
 
+def NSHE_for_gtn(name: str, data_dir: str = '/home/ubuntu/msandal_code/PyG_playground/data/NSHE/'):
+    """
+    prepare data structures for GTN architecture: NSHE article datasets
+    :param name: name of the dataset. must be ['ACM', 'IMDB', 'DBLP']
+    :param data_dir: directory where NSHE datasets are/will be stored
+    :return:
+    """
+    if name.upper() not in ['ACM', 'IMDB', 'DBLP']:
+        raise ValueError('invalid dataset name: ', name)
+
+    dataset = DBLP_ACM_IMDB_from_NSHE(root=data_dir, name=name.lower())[0]
+
+    # edge_index, edge_type
+    edge_index = list()
+    edge_type = list()
+    edge_type_counter = 0
+    for key in list(dataset['edge_index_dict'].keys()):
+        edge_index.append(dataset['edge_index_dict'][key])
+        edge_type = edge_type + [edge_type_counter] * dataset['edge_index_dict'][key].shape[1]
+        edge_type_counter += 1
+    edge_index = torch.cat(edge_index, dim=1)
+    edge_type = torch.tensor(edge_type)
+
+    # node_labels_dict
+    node_labels_dict = {ds_part: dataset[ds_part + '_id_label'] for ds_part in
+                        ['train', 'valid', 'test']}
+
+    # id_type_mask, node_features
+    id_type_mask = dataset['node_type_mask']
+    node_features = dataset['node_features']
+    num_classes = np.unique(dataset['train_id_label'][:, 1]).size
+
+    # adjacency tensor
+    n_nodes = id_type_mask.shape[0]
+
+    def edge_index_to_dense_adj_matrix(n_nodes: int, edge_index: np.array):
+        adj_matrix = np.zeros((n_nodes, n_nodes))
+        np.put(adj_matrix, edge_index, 1)
+        return adj_matrix
+    A = None
+    for edge_type in list(dataset['edge_index_dict'].keys()):
+        if A is None:
+            A = torch.from_numpy(edge_index_to_dense_adj_matrix(n_nodes, dataset['edge_index_dict'][edge_type])).unsqueeze(-1)
+        else:
+            A = torch.cat([A, torch.from_numpy(edge_index_to_dense_adj_matrix(n_nodes, dataset['edge_index_dict'][edge_type])).unsqueeze(-1)], dim=-1)
+    A = torch.cat([A, torch.eye(n_nodes).type(torch.FloatTensor).unsqueeze(-1)], dim=-1)
+    return A, node_labels_dict, node_features, num_classes, edge_index, edge_type, id_type_mask, dataset
+
+
 def GTN_for_gtn(name: str, data_dir: str = '/home/ubuntu/msandal_code/PyG_playground/data/IMDB_ACM_DBLP'):
     """
-    prepare data structures for GTN architecture
+    prepare data structures for GTN architecture: GTN article datasets
     https://github.com/seongjunyun/Graph_Transformer_Networks
     :param name: name of the dataset. must be one of ['ACM', 'IMDB', 'DBLP']
     :param data_dir: directory where IMDB_ACM_DBLP is stored. If doesn't exist, will be created
@@ -184,7 +232,7 @@ def GTN_for_gtn(name: str, data_dir: str = '/home/ubuntu/msandal_code/PyG_playgr
     edge_index = list()
     edge_type = list()
     edge_type_counter = 0
-    for key in dataset['edge_index_dict'].keys():
+    for key in list(dataset['edge_index_dict'].keys()):
         edge_index.append(dataset['edge_index_dict'][key])
         edge_type = edge_type + [edge_type_counter] * dataset['edge_index_dict'][key].shape[1]
         edge_type_counter += 1
@@ -215,7 +263,7 @@ def GTN_for_gtn(name: str, data_dir: str = '/home/ubuntu/msandal_code/PyG_playgr
             A = torch.cat([A, torch.from_numpy(edge.todense()).type(torch.FloatTensor).unsqueeze(-1)], dim=-1)
     A = torch.cat([A, torch.eye(num_nodes).type(torch.FloatTensor).unsqueeze(-1)], dim=-1)
 
-    return A, node_labels_dict,  node_features, num_classes, edge_index, edge_type, id_type_mask, dataset
+    return A, node_labels_dict, node_features, num_classes, edge_index, edge_type, id_type_mask, dataset
 
 
 # #############################################################

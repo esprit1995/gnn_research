@@ -1,9 +1,6 @@
 import numpy as np
 import os
-import torch
 from downstream_tasks.evaluation_funcs import evaluate_clu_cla_GTN_NSHE_datasets
-from downstream_tasks.node_clustering import evaluate_clustering
-from downstream_tasks.node_classification import evaluate_classification
 from datasets import DBLP_ACM_IMDB_from_NSHE, IMDB_ACM_DBLP_from_GTN
 
 DEFAULT_COMP_EMB_PATH = '/home/ubuntu/msandal_code/PyG_playground/competitors_perf/competitor_embeddings'
@@ -13,7 +10,8 @@ DEFAULT_DATA_PATH = '/home/ubuntu/msandal_code/PyG_playground/data/'
 def evaluate_competitor(path_to_embs: str = DEFAULT_COMP_EMB_PATH,
                         dataset: str = 'dblp',
                         from_paper: str = 'nshe',
-                        evaluate_architecture: str = 'nshe'):
+                        evaluate_architecture: str = 'nshe',
+                        with_cocluster_loss: bool=False):
     """
     evaluate clustering/classification on a chosen dataset using
     embeddings produced by different GNN architectures
@@ -21,6 +19,7 @@ def evaluate_competitor(path_to_embs: str = DEFAULT_COMP_EMB_PATH,
     :param dataset: which dataset to evaluate. Can be: ['dblp', 'imdb', 'acm']
     :param from_paper: from which paper the dataset version comes. Can be: ['nshe', 'gtn']
     :param evaluate_architecture: which architecture to evaluate. Possible values: ['deepwalk', 'nshe', 'hegan_gen', 'hegan_dis']
+    :param with_cocluster_loss: whether to use the embeddings obtained with coclustering complimentary loss
     :return:
     """
     # === prepare and validate the arguments
@@ -43,7 +42,10 @@ def evaluate_competitor(path_to_embs: str = DEFAULT_COMP_EMB_PATH,
         embs = embs[np.argsort(embs[:, 0])]  # sort by node id, which is the first column
         embs = embs[:, 1:]  # remove the first column, as it is not a feature
     elif evaluate_architecture in ['hegan_dis', 'hegan_gen']:
-        emb_filename = dataset + "_from_" + from_paper + "_" + evaluate_architecture + '.emb'
+        if with_cocluster_loss:
+            emb_filename = dataset + "_from_" + from_paper + "_" + evaluate_architecture + '_ccl.emb'
+        else:
+            emb_filename = dataset + "_from_" + from_paper + "_" + evaluate_architecture + '.emb'
         with open(os.path.join(path_to_embs, emb_filename)) as f:
             lines = (line for line in f)
             embs = np.loadtxt(lines, delimiter=' ', skiprows=1)

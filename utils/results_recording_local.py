@@ -3,13 +3,16 @@ import numpy as np
 import argparse
 import torch
 import json
+import matplotlib.pyplot as plt
 
 from pathlib import Path
 from termcolor import cprint
 
 
 def record_experiment_locally(project_root_path: str, experiment_name: str,
-                              embeddings: torch.tensor, perf_dict: dict, args: argparse.Namespace,
+                              embeddings: torch.tensor, perf_dict: dict,
+                              epoch_vs_perf: list,
+                              args: argparse.Namespace,
                               additional_info: str = '', ):
     """
     record the results of an experiment (currently, only the node embeddings for a certain dataset);
@@ -20,6 +23,7 @@ def record_experiment_locally(project_root_path: str, experiment_name: str,
     :param experiment_name: name of the experiment. Each experiment gets a folder
     :param embeddings: node embeddings obtained during the experiment
     :param perf_dict: dictionary containing the performance metrics of downstream tasks on the produced embeddings
+    :param epoch_vs_perf: perf tracking over #epochs trained
     :param args: arguments from Argparse used to obtain the result
     :param additional_info: additional information that can help identify the results. For instance, could be model-loss combination
     :return:
@@ -31,6 +35,13 @@ def record_experiment_locally(project_root_path: str, experiment_name: str,
     # if the path exists, empty the directory
     for filename in os.listdir(os.path.join(project_root_path, "experiment_records", experiment_name)):
         os.unlink(os.path.join(project_root_path, "experiment_records", experiment_name, filename))
+
+    # draw epoch vs perf plot
+    plt.plot(epoch_vs_perf[0], epoch_vs_perf[1], color='r')
+    plt.title(str(args.dataset) + ' from ' + str(args.from_paper) + ', ' + str(args.model))
+    plt.xlabel('#epochs trained')
+    plt.ylabel('NMI')
+    plt.savefig(os.path.join(project_root_path, "experiment_records", experiment_name, 'NMI_vs_n_epochs.png'))
 
     # save node embeddings
     try:

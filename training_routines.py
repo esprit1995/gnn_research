@@ -1,10 +1,11 @@
 import torch
 import pandas as pd
 from models import RGCN, GTN, HAN
-from data_transforms import GTN_for_rgcn, GTN_for_gtn, ACM_HAN_for_han, NSHE_for_rgcn
+from data_transforms import GTN_for_rgcn, GTN_for_gtn, ACM_HAN_for_han, NSHE_for_rgcn, NSHE_for_gtn
 from utils.tools import heterogeneous_negative_sampling_naive, IMDB_DBLP_ACM_metapath_instance_sampler, \
     label_dict_to_metadata
 from utils.losses import triplet_loss_pure, triplet_loss_type_aware, push_pull_metapath_instance_loss
+from downstream_tasks.evaluation_funcs import evaluate_clu_cla_GTN_NSHE_datasets
 
 
 def train_rgcn(args):
@@ -17,6 +18,7 @@ def train_rgcn(args):
     corruption_positions_dict = {'ACM': [(1, 2), (2, 2)],
                                  'DBLP': [(1, 1), (1, 2), (2, 2)]}
     # #######################
+
     # ========> preparing data: wrangling, sampling
     if args.from_paper == 'GTN':
         ds, n_node_dict, node_label_dict, id_type_mask, node_feature_matrix, edge_index, edge_type = GTN_for_rgcn(
@@ -50,7 +52,6 @@ def train_rgcn(args):
     print('Data ready!')
 
     # ========> training RGCN
-
     model = RGCN(input_dim=node_feature_matrix.shape[1],
                  output_dim=output_dim,
                  hidden_dim=hidden_dim,
@@ -58,6 +59,9 @@ def train_rgcn(args):
                  num_layers=num_layers)
     optimizer = torch.optim.AdamW(model.parameters(), weight_decay=0.001)
     losses = []
+    # keeping track of performance vs #epochs
+    epoch_num = list()
+    metrics = list()
     for epoch in range(args.epochs):
         model = model.float()
         output = model(x=node_feature_matrix.float(),
@@ -80,11 +84,15 @@ def train_rgcn(args):
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-
+        if (epoch + 1) % args.downstream_eval_freq == 0:
+            print('--> evaluating downstream tasks...')
+            epoch_num.append(epoch+1)
+            metrics.append(evaluate_clu_cla_GTN_NSHE_datasets(dataset=ds, embeddings=output, verbose=False)[0])
+            print('--> done!')
         if epoch % 5 == 0:
             print("Epoch: ", epoch, " loss: ", loss)
     all_ids, all_labels = label_dict_to_metadata(node_label_dict)
-    return output, all_ids, all_labels, id_type_mask, ds
+    return output, all_ids, all_labels, id_type_mask, ds, epoch_num, metrics
 
 
 def train_gtn(args):
@@ -103,9 +111,15 @@ def train_gtn(args):
     # #######################
     # ---> get necessary data structures
     if args.from_paper == 'GTN':
-        A, node_label_dict,  node_features, num_classes, edge_index, edge_type, id_type_mask, ds = GTN_for_gtn(name=args.dataset)
+        A, node_label_dict, node_features, num_classes, edge_index, edge_type, id_type_mask, ds = GTN_for_gtn(
+            name=args.dataset)
+    elif args.from_paper == 'NSHE':
+        A, node_label_dict, node_features, num_classes, edge_index, edge_type, id_type_mask, ds = NSHE_for_gtn(
+            name=args.dataset)
     else:
         raise NotImplementedError('GTN cannot be trained on datasets from paper: ' + str(args.from_paper))
+    node_features = node_features.float()
+    A = A.float()
     # ---> additional co-clustering loss data structures
     if args.cocluster_loss:
         pos_instances = dict()
@@ -136,6 +150,9 @@ def train_gtn(args):
                 norm=norm)
     model.train()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.005, weight_decay=0.001)
+    # keeping track of performance vs #epochs
+    epoch_num = list()
+    metrics = list()
     for epoch in range(args.epochs):
         model.zero_grad()
         output = model(A, node_features)
@@ -152,10 +169,15 @@ def train_gtn(args):
                                                                                   output)
         loss.backward()
         optimizer.step()
+        if (epoch + 1) % args.downstream_eval_freq == 0 or epoch == 0:
+            print('--> evaluating downstream tasks...')
+            epoch_num.append(epoch+1)
+            metrics.append(evaluate_clu_cla_GTN_NSHE_datasets(dataset=ds, embeddings=output, verbose=False)[0])
+            print('--> done!')
         print("Epoch: ", epoch, " loss: ", loss)
 
     all_ids, all_labels = label_dict_to_metadata(node_label_dict)
-    return output, all_ids, all_labels, id_type_mask, ds
+    return output, all_ids, all_labels, id_type_mask, ds, epoch_num, metrics
 
 
 def train_han(args):
