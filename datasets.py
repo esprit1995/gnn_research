@@ -206,11 +206,15 @@ class IMDB_ACM_DBLP_from_GTN(InMemoryDataset):
     ggl_drive_url = 'https://drive.google.com/uc?export=download&id=1qOZ3QjqWMIIvWjzrIdRe3EA4iKzPi6S5'
     dblp_additional = 'https://raw.github.com/cynricfu/MAGNN/master/data/raw/DBLP/'
 
-    def __init__(self, root: str, name: str, multi_type_labels: bool = True, redownload: bool = False,
+    deepwalk_embs_link = 'https://raw.github.com/esprit1995/useful_files_repo/master/msc_thesis_files/'
+
+    def __init__(self, root: str, name: str, initial_embs: str='original',
+                 multi_type_labels: bool = True, redownload: bool = False,
                  transform=None, pre_transform=None):
         """
         :param root: see PyG docs
         :param name: name of the dataset to fetch. must be one of ['DBLP', 'IMDB', 'ACM']
+        :param initial_embs: which initial node embeddings to use. must be one of ['original', 'deepwalk']
         :param multi_type_labels: whether to infer additional labels for multi-type clustering tasks (for DBLP, ACM)
         :param redownload: whether to redownload/reprocess the data from scratch
         :param transform: see PyG docs
@@ -218,6 +222,7 @@ class IMDB_ACM_DBLP_from_GTN(InMemoryDataset):
         """
         if redownload and os.path.exists(root):
             shutil.rmtree(root)
+        self.initial_embs_name = initial_embs
         self.multi_type_labels = multi_type_labels
         self.ds_name = name if name in ['DBLP', 'IMDB', 'ACM'] else None
         if self.ds_name is None:
@@ -227,12 +232,16 @@ class IMDB_ACM_DBLP_from_GTN(InMemoryDataset):
 
     @property
     def raw_file_names(self):
-        if self.ds_name != 'DBLP':
+        if self.ds_name == 'ACM':
+            return ['edges.pkl', 'labels.pkl', 'node_features.pkl',
+                    'acm_from_gtn_deepwalk.embeddings']
+        elif self.ds_name == 'IMDB':
             return ['edges.pkl', 'labels.pkl', 'node_features.pkl']
         else:
             return ['edges.pkl', 'labels.pkl', 'node_features.pkl',
                     'author_label.txt', 'conf_label.txt',
-                    'paper_conf.txt', 'paper_author.txt']
+                    'paper_conf.txt', 'paper_author.txt',
+                    'dblp_from_gtn_deepwalk.embeddings']
 
     @property
     def processed_file_names(self):
@@ -243,6 +252,12 @@ class IMDB_ACM_DBLP_from_GTN(InMemoryDataset):
         path = download_url(self.ggl_drive_url, self.raw_dir)
         extract_zip(path, self.raw_dir)
         os.unlink(path)
+
+        deepwalk_embs_filename = self.ds_name.lower() + '_from_gtn_deepwalk.embeddings'
+        _ = download_url(os.path.join(self.deepwalk_embs_link, deepwalk_embs_filename),
+                         self.raw_dir)
+        shutil.move(os.path.join(self.raw_dir, deepwalk_embs_filename),
+                    os.path.join(self.raw_dir, self.ds_name))
         for folder in os.listdir(self.raw_dir):
             if folder != self.ds_name:
                 shutil.rmtree(os.path.join(self.raw_dir, folder))
@@ -251,16 +266,32 @@ class IMDB_ACM_DBLP_from_GTN(InMemoryDataset):
         shutil.rmtree(os.path.join(self.raw_dir, self.ds_name))
         if self.ds_name == 'DBLP':
             for file in self.raw_file_names:
-                if '.pkl' not in file:
+                if '.pkl' not in file and '_deepwalk.embeddings' not in file:
                     _ = download_url(self.dblp_additional + file, self.raw_dir)
 
     def process(self):
         data_dict = dict()
-        for file in self.raw_file_names:
-            if '.pkl' not in file:
-                continue
-            with open(os.path.join(self.raw_dir, file), 'rb') as f:
-                data_dict[re.sub('.pkl', '', file)] = pkl.load(f)
+        if self.initial_embs_name == 'deepwalk':
+            emb_filename = self.ds_name.lower() + "_from_gtn_deepwalk.embeddings"
+            with open(os.path.join(self.raw_dir, emb_filename)) as f:
+                lines = (line for line in f)
+                embs = np.loadtxt(lines, delimiter=' ', skiprows=1)
+            embs = embs[np.argsort(embs[:, 0])]  # sort by node id, which is the first column
+            embs = embs[:, 1:]  # remove the first column, as it is not a feature
+            data_dict['node_features'] = embs
+            for file in self.raw_file_names:
+                if '.pkl' not in file or file == 'node_features.pkl':
+                    continue
+                with open(os.path.join(self.raw_dir, file), 'rb') as f:
+                    data_dict[re.sub('.pkl', '', file)] = pkl.load(f)
+        elif self.initial_embs_name == 'original':
+            for file in self.raw_file_names:
+                if '.pkl' not in file:
+                    continue
+                with open(os.path.join(self.raw_dir, file), 'rb') as f:
+                    data_dict[re.sub('.pkl', '', file)] = pkl.load(f)
+        else:
+            raise ValueError('initial_embs argument faulty: must be on of ["original", "deepwalk"]')
         node_type_mask = IMDB_ACM_DBLP_from_GTN.infer_type_mask_from_edges(data_dict['edges'])
         edge_index_dict = IMDB_ACM_DBLP_from_GTN.get_edge_index_dict(data_dict['edges'], node_type_mask)
         train_id_label = np.array(data_dict['labels'][0])
