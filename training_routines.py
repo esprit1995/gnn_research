@@ -149,7 +149,7 @@ def train_gtn(args):
                 num_layers=num_layers,
                 norm=norm)
     model.train()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.005, weight_decay=0.001)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.005, weight_decay=args.weight_decay)
     # keeping track of performance vs #epochs
     epoch_num = list()
     metrics = list()

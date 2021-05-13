@@ -7,7 +7,7 @@ from dgl.nn.pytorch import GATConv
 
 
 # ###############################################
-#         Graph Transformer Network conv
+#         Graph Transformer Network (GTN) conv
 # ###############################################
 class GTConv(nn.Module):
 
