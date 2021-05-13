@@ -97,7 +97,8 @@ def GTN_for_rgcn(name: str, args):
     dataset = IMDB_ACM_DBLP_from_GTN(root="/home/ubuntu/msandal_code/PyG_playground/data/IMDB_ACM_DBLP/" + name,
                                      name=name,
                                      multi_type_labels=args.multitype_labels,
-                                     redownload=args.redownload_data)[0]
+                                     redownload=args.redownload_data,
+                                     initial_embs=args.acm_dblp_from_gtn_initial_embs)[0]
 
     # n_nodes_dict
     node_count_info = pd.Series(dataset['node_type_mask']).value_counts()
@@ -166,13 +167,14 @@ def NSHE_for_rgcn(name: str, args, data_dir: str = '/home/ubuntu/msandal_code/Py
 # Architecture: GTN. Datasets from papers: GTN                #
 # #############################################################
 
-def NSHE_for_gtn(name: str, data_dir: str = '/home/ubuntu/msandal_code/PyG_playground/data/NSHE/'):
+def NSHE_for_gtn(args, data_dir: str = '/home/ubuntu/msandal_code/PyG_playground/data/NSHE/'):
     """
     prepare data structures for GTN architecture: NSHE article datasets
-    :param name: name of the dataset. must be ['ACM', 'IMDB', 'DBLP']
+    :param args: experiment run arguments
     :param data_dir: directory where NSHE datasets are/will be stored
     :return:
     """
+    name = args.dataset
     if name.upper() not in ['ACM', 'IMDB', 'DBLP']:
         raise ValueError('invalid dataset name: ', name)
 
@@ -205,28 +207,36 @@ def NSHE_for_gtn(name: str, data_dir: str = '/home/ubuntu/msandal_code/PyG_playg
         adj_matrix = np.zeros((n_nodes, n_nodes))
         adj_matrix[edge_index[0], edge_index[1]] = 1
         return adj_matrix
+
     A = None
     for edge_type in list(dataset['edge_index_dict'].keys()):
         if A is None:
-            A = torch.from_numpy(edge_index_to_dense_adj_matrix(n_nodes, dataset['edge_index_dict'][edge_type].numpy())).unsqueeze(-1)
+            A = torch.from_numpy(
+                edge_index_to_dense_adj_matrix(n_nodes, dataset['edge_index_dict'][edge_type].numpy())).unsqueeze(-1)
         else:
-            A = torch.cat([A, torch.from_numpy(edge_index_to_dense_adj_matrix(n_nodes, dataset['edge_index_dict'][edge_type].numpy())).unsqueeze(-1)], dim=-1)
+            A = torch.cat([A, torch.from_numpy(
+                edge_index_to_dense_adj_matrix(n_nodes, dataset['edge_index_dict'][edge_type].numpy())).unsqueeze(-1)],
+                          dim=-1)
     A = torch.cat([A, torch.eye(n_nodes).type(torch.FloatTensor).unsqueeze(-1)], dim=-1)
     return A, node_labels_dict, node_features, num_classes, edge_index, edge_type, id_type_mask, dataset
 
 
-def GTN_for_gtn(name: str, data_dir: str = '/home/ubuntu/msandal_code/PyG_playground/data/IMDB_ACM_DBLP'):
+def GTN_for_gtn(args, data_dir: str = '/home/ubuntu/msandal_code/PyG_playground/data/IMDB_ACM_DBLP'):
     """
     prepare data structures for GTN architecture: GTN article datasets
     https://github.com/seongjunyun/Graph_Transformer_Networks
-    :param name: name of the dataset. must be one of ['ACM', 'IMDB', 'DBLP']
+    :param args: experiment run arguments
     :param data_dir: directory where IMDB_ACM_DBLP is stored. If doesn't exist, will be created
     :return:
     """
+    name = args.dataset
     if name not in ['ACM', 'IMDB', 'DBLP']:
         raise ValueError('invalid dataset name: ', name)
 
-    dataset = IMDB_ACM_DBLP_from_GTN(root=os.path.join(data_dir, name), name=name)[0]
+    dataset = IMDB_ACM_DBLP_from_GTN(root=os.path.join(data_dir, name),
+                                     name=name,
+                                     redownload=args.redownload_data,
+                                     initial_embs=args.acm_dblp_from_gtn_initial_embs)[0]
 
     # edge_index, edge_type
     edge_index = list()

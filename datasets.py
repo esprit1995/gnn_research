@@ -272,6 +272,8 @@ class IMDB_ACM_DBLP_from_GTN(InMemoryDataset):
     def process(self):
         data_dict = dict()
         if self.initial_embs_name == 'deepwalk':
+            if self.ds_name == 'IMDB':
+                raise ValueError('IMDB does not have DeepWalk embeddings option')
             emb_filename = self.ds_name.lower() + "_from_gtn_deepwalk.embeddings"
             with open(os.path.join(self.raw_dir, emb_filename)) as f:
                 lines = (line for line in f)

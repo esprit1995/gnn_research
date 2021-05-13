@@ -112,10 +112,10 @@ def train_gtn(args):
     # ---> get necessary data structures
     if args.from_paper == 'GTN':
         A, node_label_dict, node_features, num_classes, edge_index, edge_type, id_type_mask, ds = GTN_for_gtn(
-            name=args.dataset)
+            args)
     elif args.from_paper == 'NSHE':
         A, node_label_dict, node_features, num_classes, edge_index, edge_type, id_type_mask, ds = NSHE_for_gtn(
-            name=args.dataset)
+            args)
     else:
         raise NotImplementedError('GTN cannot be trained on datasets from paper: ' + str(args.from_paper))
     node_features = node_features.float()
