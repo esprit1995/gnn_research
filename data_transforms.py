@@ -256,8 +256,7 @@ def GTN_for_gtn(args, data_dir: str = '/home/ubuntu/msandal_code/PyG_playground/
     # id_type_mask, node_feature_matrix
     id_type_mask = dataset['node_type_mask']
 
-    with open(os.path.join(data_dir, name, 'raw', 'node_features.pkl'), 'rb') as f:
-        node_features = pickle.load(f)
+    node_features = dataset['node_features']
     with open(os.path.join(data_dir, name, 'raw', 'edges.pkl'), 'rb') as f:
         edges = pickle.load(f)
     with open(os.path.join(data_dir, name, 'raw', 'labels.pkl'), 'rb') as f:
@@ -265,7 +264,6 @@ def GTN_for_gtn(args, data_dir: str = '/home/ubuntu/msandal_code/PyG_playground/
     num_nodes = edges[0].shape[0]
     num_classes = torch.max(torch.from_numpy(np.array(labels[0])[:, 1]).type(torch.LongTensor)).item() + 1
 
-    node_features = torch.from_numpy(node_features).type(torch.FloatTensor)
     for i, edge in enumerate(edges):
         if i == 0:
             A = torch.from_numpy(edge.todense()).type(torch.FloatTensor).unsqueeze(-1)

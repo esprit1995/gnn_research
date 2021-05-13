@@ -173,6 +173,7 @@ def train_gtn(args):
             print('--> evaluating downstream tasks...')
             epoch_num.append(epoch+1)
             metrics.append(evaluate_clu_cla_GTN_NSHE_datasets(dataset=ds, embeddings=output, verbose=False)[0])
+            print("this epoch's NMI : " + str(metrics[-1]))
             print('--> done!')
         print("Epoch: ", epoch, " loss: ", loss)
 
