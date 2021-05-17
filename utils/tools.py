@@ -3,7 +3,7 @@ import torch
 import numpy as np
 import multiprocessing as mp
 from torch_geometric.typing import Adj
-
+import scipy.sparse as sp
 from sklearn.preprocessing import OneHotEncoder
 
 from typing import Dict, Tuple, Any
@@ -345,3 +345,26 @@ def label_dict_to_metadata(label_dict: dict):
     for idx in range(1, len(all_keys)):
         ids_labels = np.vstack([ids_labels, label_dict[all_keys[idx]]])
     return ids_labels[:, 0], ids_labels[:, 1]
+
+# ----------------- helper funcs for NSHE
+def normalize_adj(mx):
+    """Row-normalize sparse matrix"""
+    rowsum = np.array(mx.sum(1))
+    r_inv_sqrt = np.power(rowsum, -0.5).flatten()
+    r_inv_sqrt[np.isinf(r_inv_sqrt)] = 0.
+    r_mat_inv_sqrt = sp.diags(r_inv_sqrt)
+    return mx.dot(r_mat_inv_sqrt).transpose().dot(r_mat_inv_sqrt)
+
+
+def sparse_mx_to_torch_sparse_tensor(sparse_mx):
+    """Convert a scipy sparse matrix to a torch sparse tensor."""
+    if len(sparse_mx.nonzero()[0]) == 0:
+        # 空矩阵
+        r, c = sparse_mx.shape
+        return torch.sparse.FloatTensor(r, c)
+    sparse_mx = sparse_mx.tocoo().astype(np.float32)
+    indices = torch.from_numpy(
+        np.vstack((sparse_mx.row, sparse_mx.col)).astype(np.int64))
+    values = torch.from_numpy(sparse_mx.data)
+    shape = torch.Size(sparse_mx.shape)
+    return torch.sparse.FloatTensor(indices, values, shape)

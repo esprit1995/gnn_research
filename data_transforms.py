@@ -1,89 +1,23 @@
 import pandas as pd
 import numpy as np
+import scipy.sparse as sp
 import torch
 import dgl
 import os
 import pickle
-from datasets import DBLP_MAGNN, IMDB_ACM_DBLP_from_GTN, ACM_HAN, DBLP_ACM_IMDB_from_NSHE
+
+from pathlib import Path
+from datasets import IMDB_ACM_DBLP_from_GTN, ACM_HAN, DBLP_ACM_IMDB_from_NSHE
 from sklearn.decomposition import PCA
 from utils.tools import node_type_encoding
+from utils.tools import normalize_adj, sparse_mx_to_torch_sparse_tensor
+from utils.NSHE_sampler import gen_neg_edges, gen_ns_instances
 
 
 # #############################################################
 # Architecture: RGCN. Datasets from papers: MAGNN, GTN, NSHE  #
 # Function name format: PAPER_for_architecture
 # #############################################################
-
-def MAGNN_for_rgcn():
-    """
-    transform the datasets.DBLP_MAGNN torch_geometric dataset to a
-    torch_geometric.nn.conv.RGCNConv - compatible set of data structures
-    :return:
-    """
-    dataset = DBLP_MAGNN(root="/home/ubuntu/msandal_code/PyG_playground/data/DBLP_MAGNN", use_MAGNN_init_feats=True)[0]
-
-    # reindexing nodes to ensure unique ids;
-    # creating id-type mask
-    node_types = ['author', 'paper', 'term']
-    node_type_id_dict = {node_types[i]: i for i in range(len(node_types))}
-    n_nodes_dict = dict()
-    id_type_mask = list()
-    new_index = 0
-    for node_type in node_types:
-        dataset.node_id_bag_of_words[node_type]['global_id'] = range(new_index, new_index +
-                                                                     dataset.node_id_bag_of_words[node_type].shape[0])
-        new_index = new_index + dataset.node_id_bag_of_words[node_type].shape[0]
-        n_nodes_dict[node_type] = dataset.node_id_bag_of_words[node_type].shape[0]
-        id_type_mask = id_type_mask + [node_type_id_dict[node_type]] * dataset.node_id_bag_of_words[node_type].shape[0]
-    id_type_mask = torch.tensor(id_type_mask)
-
-    # creating labels dictionary
-    node_labels_dict = dict()
-    node_labels_dict['author'] = dataset.id_label['author']['label'].tolist()
-
-    # creating feature matrix. Dimensionality is inferred from term frame (since it is smallest)
-    dimensions = dataset.initial_embeddings['term'][1][1].size
-    author_feats = np.array([dataset.initial_embeddings['author'][i][1]
-                             for i in range(len(dataset.initial_embeddings['author']))])
-    paper_feats = np.array([dataset.initial_embeddings['paper'][i][1]
-                            for i in range(len(dataset.initial_embeddings['paper']))])
-    term_feats = np.array([dataset.initial_embeddings['term'][i][1]
-                           for i in range(len(dataset.initial_embeddings['term']))])
-    pca = PCA(n_components=dimensions)
-    author_feats = pca.fit_transform(author_feats)
-    paper_feats = pca.fit_transform(paper_feats)
-    node_feature_matrix = torch.tensor(np.vstack((author_feats, paper_feats, term_feats)))
-    assert node_feature_matrix.shape[0] == new_index, \
-        "#nodes != #features: " + str(node_feature_matrix.shape[0]) + " != " + str(new_index)
-
-    # creating edge index.
-    dataset.edge_index_dict[('paper', 'author')] = dataset.edge_index_dict[('paper', 'author')] \
-        .merge(dataset.node_id_bag_of_words['author'][['author_id', 'global_id']],
-               on='author_id', how='inner') \
-        .rename(columns={'global_id': 'author_global_id'}) \
-        .merge(dataset.node_id_bag_of_words['paper'][['paper_id', 'global_id']],
-               on='paper_id', how='inner') \
-        .rename(columns={'global_id': 'paper_global_id'}) \
-        .drop(columns=['paper_id', 'author_id'])
-
-    dataset.edge_index_dict[('paper', 'term')] = dataset.edge_index_dict[('paper', 'term')] \
-        .merge(dataset.node_id_bag_of_words['term'][['term_id', 'global_id']],
-               on='term_id', how='inner') \
-        .rename(columns={'global_id': 'term_global_id'}) \
-        .merge(dataset.node_id_bag_of_words['paper'][['paper_id', 'global_id']],
-               on='paper_id', how='inner') \
-        .rename(columns={'global_id': 'paper_global_id'}) \
-        .drop(columns=['paper_id', 'term_id'])
-
-    edge_type_id_dict = {('paper', 'author'): 0, ('paper', 'term'): 1}
-    source_nodes = np.array(dataset.edge_index_dict[('paper', 'author')]['paper_global_id'].tolist() +
-                            dataset.edge_index_dict[('paper', 'term')]['paper_global_id'].tolist())
-    target_nodes = np.array(dataset.edge_index_dict[('paper', 'author')]['author_global_id'].tolist() +
-                            dataset.edge_index_dict[('paper', 'term')]['term_global_id'].tolist())
-    edge_index = torch.tensor([source_nodes, target_nodes])
-    edge_type = torch.tensor(np.array([0] * dataset.edge_index_dict[('paper', 'author')].shape[0] +
-                                      [1] * dataset.edge_index_dict[('paper', 'term')].shape[0]))
-    return n_nodes_dict, node_labels_dict, id_type_mask, node_feature_matrix, edge_index, edge_type
 
 
 def GTN_for_rgcn(name: str, args):
@@ -164,7 +98,8 @@ def NSHE_for_rgcn(name: str, args, data_dir: str = '/home/ubuntu/msandal_code/Py
 
 
 # #############################################################
-# Architecture: GTN. Datasets from papers: GTN                #
+# Architecture: GTN. Datasets from papers: GTN, NSHE          #
+# Naming convention format: PAPER_for_architecture
 # #############################################################
 
 def NSHE_for_gtn(args, data_dir: str = '/home/ubuntu/msandal_code/PyG_playground/data/NSHE/'):
@@ -272,6 +207,184 @@ def GTN_for_gtn(args, data_dir: str = '/home/ubuntu/msandal_code/PyG_playground/
     A = torch.cat([A, torch.eye(num_nodes).type(torch.FloatTensor).unsqueeze(-1)], dim=-1)
 
     return A, node_labels_dict, node_features, num_classes, edge_index, edge_type, id_type_mask, dataset
+
+
+# #############################################################
+# Architecture: NSHE. Datasets from papers: GTN               #
+# Naming convention format: PAPER_for_architecture
+# #############################################################
+E_NEG_RATE = 1  # was always 1 in the original NSHE code
+NS_NEG_RATE = 4 # was always 4 in the original NSHE code
+
+
+class GTN_or_NSHE_for_nshe(object):
+    """
+    prepare data structures for NSHE architecture: GTN article datasets
+    https://github.com/seongjunyun/Graph_Transformer_Networks
+    Has to be a class and not a function due to the necessity to keep an internal state
+    """
+
+    def __init__(self,
+                 args,
+                 data_dir: str = '/home/ubuntu/msandal_code/PyG_playground/data/IMDB_ACM_DBLP',
+                 nshe_personal_storage: str = '/home/ubuntu/msandal_code/PyG_playground/data/model_data/NSHE'):
+        """
+        :param args: experiment run arguments
+        :param data_dir: directory where IMDB_ACM_DBLP is stored. If doesn't exist, will be created
+        :param nshe_personal_storage: NSHE saves sampled schema instances for every epoch. this variable
+                               indicates the path where the files will be saved to
+        """
+        name = args.dataset
+        if name not in ['ACM', 'DBLP']:
+            raise ValueError('invalid dataset name: ', name)
+        # ----> remark: NSHE is 'traditionally' run on initial DeepWalk embeddings
+        if args.from_paper == 'GTN':
+            dataset = IMDB_ACM_DBLP_from_GTN(root=os.path.join(data_dir, name),
+                                             name=name,
+                                             redownload=args.redownload_data,
+                                             initial_embs='deepwalk')[0]
+        elif args.from_paper == 'NSHE':
+            dataset = DBLP_ACM_IMDB_from_NSHE(root=data_dir,
+                                              name=name.lower())[0]
+        else:
+            raise ValueError('Cannot prepare datasets from ' + str(args.from_paper) + ': unimplemented')
+
+        self.seed = args.random_seed
+        self.dataset = args.dataset
+        self.nshe_personal_storage = nshe_personal_storage
+        # --> initialize the required fields as in the original code
+        self.node_id, self.t_info, self.node_cnt_all, self.edge_cnt = None, None, None, None
+        self.adj, self.adj2, self.dw_features, self.edge = None, None, None, None
+        self.true_feature, self.feature = {}, {}
+        self.ns_instances, self.ns_label = None, None
+        self.node_types = None
+        self.optimizer = None
+        self.ns_neg_rate = 4
+        self.seed_set = []
+
+        # --> load the network: use data structures required by the original NSHE
+        node_type_mask = dataset['node_type_mask'].numpy()
+        int_to_node_type_dict = {'ACM': {'0': 'p', '1': 'a', '2': 's'},
+                                 'DBLP': {'0': 'a', '1': 'p', '2': 'c'}}
+        self.node_id = dict()
+        self.t_info = dict()
+        self.node2id = dict()
+        self.id2node = dict()
+
+        for node_int_type in list(int_to_node_type_dict[self.dataset].keys()):
+            node_letter_type = int_to_node_type_dict[self.dataset][node_int_type]
+            corresp_node_ids = np.argwhere(node_type_mask == int(node_int_type)).reshape(-1)
+            self.node_id[node_letter_type] = \
+                {node_letter_type + str(i): corresp_node_ids[i] for i in range(corresp_node_ids.size)}
+            self.node2id = {**self.node2id, **self.node_id[node_letter_type]}
+            self.id2node = {**self.id2node,
+                            **{corresp_node_ids[i]: node_letter_type + str(i) for i in range(corresp_node_ids.size)}}
+            self.t_info[node_letter_type] = {'cnt': corresp_node_ids.size,
+                                             'ind': range(np.min(corresp_node_ids), np.max(corresp_node_ids)+1)}
+        self.node_types = self.node_id.keys()
+
+        # --> load the edges and adjacency info
+        # self.adj, self.edge, self.edge_cnt, self.adj2
+        node_cnt = len(self.node2id)
+        edge_index_dict = dataset['edge_index_dict']
+        rows = list()
+        cols = list()
+
+        # necessary because original code does not take symmetric edges into account
+        unique_edge_types = list(edge_index_dict.keys())
+        for edge_type in list(edge_index_dict.keys()):
+            if edge_type in unique_edge_types and (edge_type[1], edge_type[0]) in unique_edge_types:
+                unique_edge_types.remove(edge_type)
+        for edge_type in unique_edge_types:
+            rows = rows + edge_index_dict[edge_type][0].tolist()
+            cols = cols + edge_index_dict[edge_type][1].tolist()
+        adj = sp.csr_matrix((np.ones(len(rows)), (rows, cols)), shape=(node_cnt, node_cnt))
+        self.adj2 = adj + adj.T.multiply(adj.T > adj) - adj.multiply(adj.T > adj)
+        del adj
+        _ = rows.copy()
+        rows = rows + cols
+        cols = cols + _
+        self.edge = {"r": rows, "c": cols}
+        adj_normalized = normalize_adj(self.adj2 + sp.eye(self.adj2.shape[0]))
+        self.adj = sparse_mx_to_torch_sparse_tensor(adj_normalized)
+        self.edge_cnt = len(rows)
+
+        # --> set the features
+        self.dw_features = dataset['node_features'].numpy()
+        self.true_feature = {t: None for t in self.node_types}
+        for t in self.node_types:
+            self.feature[t] = torch.FloatTensor(self.dw_features[self.t_info[t]['ind']])
+
+        # --> sampling
+
+        for i in range(args.epochs):
+            self.seed_set.append(np.random.randint(1000))
+
+    def get_epoch_samples(self, epoch, args):
+        """
+        Renew ns_instances and neg_edges in every epoch:
+        1. get the seed for current epoch
+        2. find using seed
+            Y: load the file
+            N: sample again and save
+        """
+
+        # seed for current epoch
+        epoch_seed = self.seed_set[epoch]
+        np.random.seed(epoch_seed)
+
+        def _get_neg_edge(epoch_seed_):
+            fname = os.path.join(self.nshe_personal_storage, 'reusable', self.dataset + '_' + args.from_paper,
+                                 "neg_edges",
+                                 "NE-rate=" + str(E_NEG_RATE) + "_seed=" + str(epoch_seed_) + '.dat')
+            if os.path.exists(fname):
+                # load
+                with open(fname, 'rb') as handle:
+                    try:
+                        epoch_data = pickle.load(handle)
+                        self.neg_edge = epoch_data['neg_edge']
+                    except EOFError:
+                        os.remove(fname)
+                        print(epoch_seed_, fname)
+            else:
+                # sample
+                self.neg_edge = gen_neg_edges(self.adj2, self.edge, E_NEG_RATE)
+                # save
+                data_to_save = {'neg_edge': self.neg_edge}
+                Path('/'.join(str(fname).split('/')[:-1])).mkdir(parents=True, exist_ok=True)
+                with open(fname, 'wb') as handle:
+                    pickle.dump(data_to_save, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+        def _get_ns_instance(epoch_seed_):
+            fname = os.path.join(self.nshe_personal_storage,
+                                 'reusable', self.dataset + '_' + args.from_paper,
+                                 "network_schema_instances",
+                                 "NS-rate=" + str(NS_NEG_RATE) + "_seed=" + str(epoch_seed_) + '.dat')
+            if os.path.exists(fname):
+                # load
+                with open(fname, 'rb') as handle:
+                    try:
+                        epoch_data = pickle.load(handle)
+                    except EOFError:
+                        print(epoch_seed_, fname)
+                self.ns_instances = epoch_data['ns_instances']
+                self.ns_label = epoch_data['ns_label']
+            else:
+
+                f_type_adj = os.path.join(self.nshe_personal_storage, self.dataset + '_' + args.from_paper)
+                self.ns_instances, self.ns_label = gen_ns_instances(f_type_adj, self.adj2, self.edge, self.t_info,
+                                                                    self.ns_neg_rate)
+                # save
+                data_to_save = {
+                    'ns_instances': self.ns_instances,
+                    'ns_label': self.ns_label}
+                Path('/'.join(str(fname).split('/')[:-1])).mkdir(parents=True, exist_ok=True)
+                with open(fname, 'wb') as handle:
+                    pickle.dump(data_to_save, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+        _get_neg_edge(epoch_seed)
+        _get_ns_instance(epoch_seed)
+        return
 
 
 # #############################################################
