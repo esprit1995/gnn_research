@@ -1,9 +1,9 @@
-import dgl
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 import math
-from dgl.nn.pytorch import GATConv
+from torch import nn
+from torch.nn.parameter import Parameter
+from torch.nn.modules.module import Module
+import torch.nn.functional as F
 
 
 # ###############################################
@@ -59,71 +59,85 @@ class GTLayer(nn.Module):
 
 
 # ###############################################
-#   Heterogeneous Graph Attention Network conv
+# NSHE convs: code from https://github.com/Andy-Border/NSHE
 # ###############################################
-class SemanticAttention(nn.Module):
-    def __init__(self, in_size, hidden_size=128):
-        super(SemanticAttention, self).__init__()
 
-        self.project = nn.Sequential(
-            nn.Linear(in_size, hidden_size),
-            nn.Tanh(),
-            nn.Linear(hidden_size, 1, bias=False)
-        )
+class GraphConvolution(Module):  # GCN AHW
+    def __init__(self, in_features, out_features, bias=True):
+        super(GraphConvolution, self).__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.weight = Parameter(torch.FloatTensor(in_features, out_features))
+        if bias:
+            self.bias = Parameter(torch.FloatTensor(out_features))
+        else:
+            self.register_parameter('bias', None)
+        self.reset_parameters()
 
-    def forward(self, z):
-        w = self.project(z).mean(0)  # (M, 1)
-        beta = torch.softmax(w, dim=0)  # (M, 1)
-        beta = beta.expand((z.shape[0],) + beta.shape)  # (N, M, 1)
+    def reset_parameters(self):
+        stdv = 1. / math.sqrt(self.weight.size(1))
+        self.weight.data.uniform_(-stdv, stdv)
+        if self.bias is not None:
+            self.bias.data.uniform_(-stdv, stdv)
 
-        return (beta * z).sum(1)  # (N, D * K)
+    def forward(self, inputs, adj, global_W=None):
+        if len(adj._values()) == 0:
+            return torch.zeros(adj.shape[0], self.out_features)
+        support = torch.spmm(inputs, self.weight)  # HW in GCN
+        if global_W is not None:
+            support = torch.spmm(support, global_W)  # Ignore this!
+        output = torch.spmm(adj, support)  # AHW
+        if self.bias is not None:
+            return output + self.bias
+        else:
+            return output
+
+    def __repr__(self):
+        return self.__class__.__name__ + ' (' \
+               + str(self.in_features) + ' -> ' \
+               + str(self.out_features) + ')'
 
 
-class HANLayer(nn.Module):
-    """
-    HAN layer.
-    Arguments
-    ---------
-    meta_paths : list of metapaths, each as a list of edge types
-    in_size : input feature dimension
-    out_size : output feature dimension
-    layer_num_heads : number of attention heads
-    dropout : Dropout probability
-    """
+class GraphAttentionConvolution(Module):
+    def __init__(self, in_features, out_features, bias=True):
+        super(GraphAttentionConvolution, self).__init__()
+        self.out_dim = out_features
+        self.weights = Parameter(torch.FloatTensor(in_features, out_features))
+        nn.init.xavier_normal_(self.weights.data, gain=1.414)
+        if bias:
+            self.bias = Parameter(torch.FloatTensor(out_features))
+            stdv = 1. / math.sqrt(out_features)
+            self.bias.data.uniform_(-stdv, stdv)
+        else:
+            self.register_parameter('bias', None)
+        self.attention = Attention_InfLevel(out_features)
 
-    def __init__(self, meta_paths, in_size, out_size, layer_num_heads, dropout):
-        super(HANLayer, self).__init__()
+    def forward(self, input_, adj, global_W=None):
 
-        # One GAT layer for each meta path based adjacency matrix
-        self.gat_layers = nn.ModuleList()
-        for i in range(len(meta_paths)):
-            self.gat_layers.append(GATConv(in_size, out_size, layer_num_heads,
-                                           dropout, dropout, activation=F.elu,
-                                           allow_zero_in_degree=True))
-        self.semantic_attention = SemanticAttention(in_size=out_size * layer_num_heads)
-        self.meta_paths = list(tuple(meta_path) for meta_path in meta_paths)
+        h = torch.spmm(input_, self.weights)
+        h_prime = self.attention(h, adj) + self.bias
+        return h_prime
 
-        self._cached_graph = None
-        self._cached_coalesced_graph = {}
 
-    def forward(self, g, h):
-        """
-        :param g: dgl heterogeneous graph
-        :param h: tensor of input features
-        :return: a tensor of output features
-        """
-        semantic_embeddings = []
+class Attention_InfLevel(nn.Module):
+    def __init__(self, dim_features):
+        super(Attention_InfLevel, self).__init__()
+        self.dim_features = dim_features
+        self.a1 = nn.Parameter(torch.zeros(size=(dim_features, 1)))
+        self.a2 = nn.Parameter(torch.zeros(size=(dim_features, 1)))
+        nn.init.xavier_normal_(self.a1.data, gain=1.414)
+        nn.init.xavier_normal_(self.a2.data, gain=1.414)
+        self.leakyrelu = nn.LeakyReLU(0.2)
 
-        if self._cached_graph is None or self._cached_graph is not g:
-            self._cached_graph = g
-            self._cached_coalesced_graph.clear()
-            for meta_path in self.meta_paths:
-                self._cached_coalesced_graph[meta_path] = dgl.metapath_reachable_graph(
-                    g, meta_path)
-
-        for i, meta_path in enumerate(self.meta_paths):
-            new_g = self._cached_coalesced_graph[meta_path]
-            semantic_embeddings.append(self.gat_layers[i](new_g, h).flatten(1))
-        semantic_embeddings = torch.stack(semantic_embeddings, dim=1)  # (N, M, D * K)
-
-        return self.semantic_attention(semantic_embeddings)  # (N, D * K)
+    def forward(self, h, adj):
+        N = h.size()[0]
+        e1 = torch.matmul(h, self.a1).repeat(1, N)
+        e2 = torch.matmul(h, self.a2).repeat(1, N).t()
+        e = e1 + e2
+        e = self.leakyrelu(e)
+        zero_vec = -9e15 * torch.ones_like(e)
+        attention = torch.where(adj.to_dense() > 0, e, zero_vec)
+        del zero_vec
+        attention = F.softmax(attention, dim=1)
+        h_prime = torch.matmul(attention, h)  # h' = alpha * h(hw)
+        return h_prime

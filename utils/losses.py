@@ -79,8 +79,8 @@ def triplet_loss_type_aware(id_triplets: Tuple[torch.tensor, torch.tensor, torch
     return normal_loss + lmbd * type_loss
 
 
-def push_pull_metapath_instance_loss(pos_instances: list, corrupted_instances: list,
-                                     corrupted_positions: tuple, node_embeddings: torch.tensor):
+def push_pull_metapath_instance_loss(pos_instances, corrupted_instances,
+                                     corrupted_positions, node_embeddings: torch.tensor):
     """
     compute the push-pull loss (logsigmoid loss) over the given metapath instances.
     assumes that positive and negative metapath instances have the same template

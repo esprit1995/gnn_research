@@ -9,7 +9,6 @@ import dgl
 import pandas as pd
 import numpy as np
 import scipy as scp
-import nltk
 
 from termcolor import cprint
 from pathlib import Path
@@ -17,9 +16,6 @@ from pathlib import Path
 from scipy import io as sio
 from torch_geometric.data import Data, InMemoryDataset, download_url, extract_zip
 from scipy.sparse import load_npz
-from nltk.stem import WordNetLemmatizer
-from nltk.corpus import stopwords as nltk_stopwords
-from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS as sklearn_stopwords
 from sklearn.model_selection import train_test_split
 
 

@@ -2,13 +2,11 @@ import pandas as pd
 import numpy as np
 import scipy.sparse as sp
 import torch
-import dgl
 import os
 import pickle
 
 from pathlib import Path
-from datasets import IMDB_ACM_DBLP_from_GTN, ACM_HAN, DBLP_ACM_IMDB_from_NSHE
-from sklearn.decomposition import PCA
+from datasets import IMDB_ACM_DBLP_from_GTN, DBLP_ACM_IMDB_from_NSHE
 from utils.tools import node_type_encoding
 from utils.tools import normalize_adj, sparse_mx_to_torch_sparse_tensor
 from utils.NSHE_sampler import gen_neg_edges, gen_ns_instances
@@ -214,7 +212,7 @@ def GTN_for_gtn(args, data_dir: str = '/home/ubuntu/msandal_code/PyG_playground/
 # Naming convention format: PAPER_for_architecture
 # #############################################################
 E_NEG_RATE = 1  # was always 1 in the original NSHE code
-NS_NEG_RATE = 4 # was always 4 in the original NSHE code
+NS_NEG_RATE = 4  # was always 4 in the original NSHE code
 
 
 class GTN_or_NSHE_for_nshe(object):
@@ -248,9 +246,9 @@ class GTN_or_NSHE_for_nshe(object):
                                               name=name.lower())[0]
         else:
             raise ValueError('Cannot prepare datasets from ' + str(args.from_paper) + ': unimplemented')
-
+        self.ds = dataset
         self.seed = args.random_seed
-        self.dataset = args.dataset
+        self.dataset_name = args.dataset
         self.nshe_personal_storage = nshe_personal_storage
         # --> initialize the required fields as in the original code
         self.node_id, self.t_info, self.node_cnt_all, self.edge_cnt = None, None, None, None
@@ -262,6 +260,23 @@ class GTN_or_NSHE_for_nshe(object):
         self.ns_neg_rate = 4
         self.seed_set = []
 
+        # --> edge index and type mask for triplet loss
+        self.edge_index = list()
+        self.edge_type = list()
+        edge_type_counter = 0
+        for key in list(self.ds['edge_index_dict'].keys()):
+            self.edge_index.append(dataset['edge_index_dict'][key])
+            self.edge_type = self.edge_type + [edge_type_counter] * self.ds['edge_index_dict'][key].shape[1]
+            edge_type_counter += 1
+        self.edge_index = torch.cat(self.edge_index, dim=1)
+        self.edge_type = torch.tensor(self.edge_type)
+
+        self.id_type_mask = dataset['node_type_mask']
+
+        # --> node label dict for evaluation
+        self.node_label_dict = {ds_part: self.ds[ds_part + '_id_label'] for ds_part in
+                                    ['train', 'valid', 'test']}
+
         # --> load the network: use data structures required by the original NSHE
         node_type_mask = dataset['node_type_mask'].numpy()
         int_to_node_type_dict = {'ACM': {'0': 'p', '1': 'a', '2': 's'},
@@ -271,8 +286,8 @@ class GTN_or_NSHE_for_nshe(object):
         self.node2id = dict()
         self.id2node = dict()
 
-        for node_int_type in list(int_to_node_type_dict[self.dataset].keys()):
-            node_letter_type = int_to_node_type_dict[self.dataset][node_int_type]
+        for node_int_type in list(int_to_node_type_dict[self.dataset_name].keys()):
+            node_letter_type = int_to_node_type_dict[self.dataset_name][node_int_type]
             corresp_node_ids = np.argwhere(node_type_mask == int(node_int_type)).reshape(-1)
             self.node_id[node_letter_type] = \
                 {node_letter_type + str(i): corresp_node_ids[i] for i in range(corresp_node_ids.size)}
@@ -280,7 +295,7 @@ class GTN_or_NSHE_for_nshe(object):
             self.id2node = {**self.id2node,
                             **{corresp_node_ids[i]: node_letter_type + str(i) for i in range(corresp_node_ids.size)}}
             self.t_info[node_letter_type] = {'cnt': corresp_node_ids.size,
-                                             'ind': range(np.min(corresp_node_ids), np.max(corresp_node_ids)+1)}
+                                             'ind': range(np.min(corresp_node_ids), np.max(corresp_node_ids) + 1)}
         self.node_types = self.node_id.keys()
 
         # --> load the edges and adjacency info
@@ -334,7 +349,7 @@ class GTN_or_NSHE_for_nshe(object):
         np.random.seed(epoch_seed)
 
         def _get_neg_edge(epoch_seed_):
-            fname = os.path.join(self.nshe_personal_storage, 'reusable', self.dataset + '_' + args.from_paper,
+            fname = os.path.join(self.nshe_personal_storage, 'reusable', self.dataset_name + '_' + args.from_paper,
                                  "neg_edges",
                                  "NE-rate=" + str(E_NEG_RATE) + "_seed=" + str(epoch_seed_) + '.dat')
             if os.path.exists(fname):
@@ -357,7 +372,7 @@ class GTN_or_NSHE_for_nshe(object):
 
         def _get_ns_instance(epoch_seed_):
             fname = os.path.join(self.nshe_personal_storage,
-                                 'reusable', self.dataset + '_' + args.from_paper,
+                                 'reusable', self.dataset_name + '_' + args.from_paper,
                                  "network_schema_instances",
                                  "NS-rate=" + str(NS_NEG_RATE) + "_seed=" + str(epoch_seed_) + '.dat')
             if os.path.exists(fname):
@@ -371,7 +386,9 @@ class GTN_or_NSHE_for_nshe(object):
                 self.ns_label = epoch_data['ns_label']
             else:
 
-                f_type_adj = os.path.join(self.nshe_personal_storage, self.dataset + '_' + args.from_paper)
+                f_type_adj = os.path.join(self.nshe_personal_storage,
+                                          self.dataset_name + '_' + args.from_paper,
+                                          'relation2id.txt')
                 self.ns_instances, self.ns_label = gen_ns_instances(f_type_adj, self.adj2, self.edge, self.t_info,
                                                                     self.ns_neg_rate)
                 # save
@@ -385,19 +402,3 @@ class GTN_or_NSHE_for_nshe(object):
         _get_neg_edge(epoch_seed)
         _get_ns_instance(epoch_seed)
         return
-
-
-# #############################################################
-# Architecture: HAN. Datasets from papers: GTN                #
-# #############################################################
-
-
-def ACM_HAN_for_han(data_dir: str = '/home/ubuntu/msandal_code/PyG_playground/data/ACM_HAN'):
-    dataset = ACM_HAN(root=data_dir)[0]
-    metapaths = [('pa', 'ap'), ('pf', 'fp')]
-    edge_index_list = list()
-    for metapath in metapaths:
-        metagraph = dgl.metapath_reachable_graph(dataset.dgl_hetgraph, metapath=metapath)
-        edge_index_list.append(metagraph.adjacency_matrix(etype=metagraph.etypes[0]).coalesce().indices())
-    id_type_mask = torch.tensor([0] * dataset.features.shape[0])
-    return dataset.dgl_hetgraph, dataset.features, dataset.labels, dataset.num_classes, edge_index_list, id_type_mask
