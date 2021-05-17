@@ -50,11 +50,14 @@ def run_pipeline(args_, experiment_name_: str = ''):
     # downstream tasks evaluation
     warnings.simplefilter('ignore')
     NMI, ARI, microF1, macroF1 = evaluate_clu_cla_GTN_NSHE_datasets(dataset, output)
-    print('best performance (NMI clu) achieved at epoch: ' + str(epochs_num[metrics.index(max(metrics))]))
-    print('and is equal to: ' + str(max(metrics)))
+    best_NMI = max(metrics)
+    best_NMI_at_epoch = epochs_num[metrics.index(max(metrics))]
+    print('best performance (NMI clu) achieved at epoch: ' + str(best_NMI_at_epoch))
+    print('and is equal to: ' + str(best_NMI))
     warnings.simplefilter('default')
     performances_dict = {"NMI": NMI, "ARI": ARI,
-                         "microF1": microF1, "macroF1": macroF1}
+                         "microF1": microF1, "macroF1": macroF1,
+                         "best_NMI": best_NMI, "best_NMI_at_epoch": best_NMI_at_epoch}
 
     # recording experiment results locally
     record_experiment_locally(os.getcwd(), experiment_name_, output, performances_dict,
@@ -64,9 +67,13 @@ def run_pipeline(args_, experiment_name_: str = ''):
 
 if __name__ == "__main__":
     args = model_run_argparse()
-    special_notes = 'testing_viz'
-    experiment_name = '_'.join([args.dataset, 'from', args.from_paper,
-                                args.model,
+    special_notes = ''
+    if args.dataset in ['DBLP', 'ACM'] and args.from_paper == 'GTN':
+        dataset_name = '_'.join([args.dataset, 'from', args.from_paper, 'initial_embs', args.acm_dblp_from_gtn_initial_embs])
+    else:
+        dataset_name = '_'.join([args.dataset, 'from', args.from_paper])
+    experiment_name = '_'.join([dataset_name,
+                                'Model', args.model,
                                 str(args.epochs), 'epochs',
                                 str(args.base_triplet_loss), 'baseTripletLoss',
                                 str(args.cocluster_loss), 'coclusterLoss',
