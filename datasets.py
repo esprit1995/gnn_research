@@ -41,6 +41,10 @@ class IMDB_ACM_DBLP_from_GTN(InMemoryDataset):
         """
         if redownload and os.path.exists(root):
             shutil.rmtree(root)
+        # delete processed data to force processing anew:
+        # needed since there are some args that affect the output
+        if os.path.exists(os.path.join(root, 'processed')):
+            shutil.rmtree(os.path.join(root, 'processed'))
         self.initial_embs_name = initial_embs
         self.multi_type_labels = multi_type_labels
         self.ds_name = name if name in ['DBLP', 'IMDB', 'ACM'] else None
