@@ -10,20 +10,49 @@ MODEL_EVAL_FREQ = {"RGCN": 5,
                    "NSHE": 2}
 MODEL_MAX_EPOCHS = {'RGCN': 500,
                     'GTN': 30,
-                    "NSHE": 50}
+                    "NSHE": 70}
 PAPER_DATASET = {"GTN": ['DBLP', 'ACM'],
                  "NSHE": ['DBLP', 'ACM']}
 
+EXP_NAME_SPECIAL_NOTES = 'test_grid_run'
+
 # ##########################################
 # ##########################################
 
-PAPERS_TO_RUN = ['GTN', 'NSHE']
-MODELS_TO_RUN = ["NSHE", 'GTN']
+PAPERS_TO_RUN = ["GTN", "NSHE"]
+MODELS_TO_RUN = ["RGCN", "NSHE", "GTN"]
 
-ALTERABLE_ARGS = {'cocluster_loss': [True, False],
-                  'corruption_method': ['random', 'crossover'],
+
+#  arguments that affect runs WITH COCLUSTER_LOSS=TRUE
+ALTERABLE_ARGS = {'corruption_method': ['random', 'crossover'],
                   'type_lambda': [0.1, 1, 10],
                   'acm_dblp_from_gtn_initial_embs': ['deepwalk', 'original']}
+
+
+def create_experiment_name(args_, special_notes: str = '') -> str:
+    """
+    create name for the experiment based on its Argparse settings
+    :param args_: Argparse settings of the experiment
+    :param special_notes: any non-standard comments to add to the name
+    :return:
+    """
+    if args_.dataset in ['DBLP', 'ACM'] and args_.from_paper == 'GTN':
+        dataset_name = '_'.join(
+            [args_.dataset, 'from', args_.from_paper, 'initial_embs', args_.acm_dblp_from_gtn_initial_embs])
+    else:
+        dataset_name = '_'.join([args_.dataset, 'from', args_.from_paper])
+    return '_'.join([dataset_name,
+                     'Model', args_.model,
+                     str(args_.epochs), 'epochs',
+                     str(args_.base_triplet_loss), 'baseTripletLoss',
+                     str(args_.cocluster_loss), 'coclusterLoss',
+                     str(args_.type_lambda), 'lambda',
+                     str(args_.corruption_method), 'corrmethod',
+                     str(args_.instances_per_template), 'ipt',
+                     str(args_.random_seed), 'rs',
+                     datetime.now().strftime("%d_%m_%Y_%H_%M_%S"),
+                     special_notes])
+
 
 if __name__ == '__main__':
     mp.set_start_method('spawn', force=True)
@@ -43,11 +72,22 @@ if __name__ == '__main__':
                        + ' for ' + str(args.epochs) + ' epochs',
                        color='cyan',
                        attrs=['bold'])
+
+                cprint('-->Training without cocluster loss', color='yellow')
+                setattr(args, 'cocluster_loss', False)
+                p = mp.Process(target=run_pipeline, args=(args, create_experiment_name(args, EXP_NAME_SPECIAL_NOTES)))
+                p.start()
+                p.join()
+
+                cprint('-->Training with cocluster loss', color='yellow')
+                setattr(args, 'cocluster_loss', True)
+                # GTN datasets have different initial embeddings possibilities
+                # others don't, have to account for that.
                 if from_paper == 'GTN':
                     altags = ALTERABLE_ARGS
                 else:
                     altags = {argname: ALTERABLE_ARGS[argname] for argname in list(ALTERABLE_ARGS.keys()) if
-                                                                argname != 'acm_dblp_from_gtn_initial_embs'}
+                              argname != 'acm_dblp_from_gtn_initial_embs'}
                 alterable_args_grid = ParameterGrid(altags)
                 for alterable_args_set in alterable_args_grid:
                     cprint('alterable args values: ' + str(alterable_args_set),
@@ -55,24 +95,7 @@ if __name__ == '__main__':
                     # set the values of all the alterable arguments
                     for attrname in list(alterable_args_set.keys()):
                         setattr(args, attrname, alterable_args_set[attrname])
-                    # create experiment name
-                    special_notes = ''
-                    if args.dataset in ['DBLP', 'ACM'] and args.from_paper == 'GTN':
-                        dataset_name = '_'.join(
-                            [args.dataset, 'from', args.from_paper, 'initial_embs', args.acm_dblp_from_gtn_initial_embs])
-                    else:
-                        dataset_name = '_'.join([args.dataset, 'from', args.from_paper])
-                    experiment_name = '_'.join([dataset_name,
-                                                'Model', args.model,
-                                                str(args.epochs), 'epochs',
-                                                str(args.base_triplet_loss), 'baseTripletLoss',
-                                                str(args.cocluster_loss), 'coclusterLoss',
-                                                str(args.type_lambda), 'lambda',
-                                                str(args.corruption_method), 'corrmethod',
-                                                str(args.instances_per_template), 'ipt',
-                                                str(args.random_seed), 'rs',
-                                                datetime.now().strftime("%d_%m_%Y_%H_%M_%S"),
-                                                special_notes])
-                    p = mp.Process(target=run_pipeline, args=(args, experiment_name))
+                    p = mp.Process(target=run_pipeline,
+                                   args=(args, create_experiment_name(args, EXP_NAME_SPECIAL_NOTES)))
                     p.start()
                     p.join()
