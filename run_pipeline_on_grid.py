@@ -6,9 +6,11 @@ from utils.arguments import model_run_argparse
 from sklearn.model_selection import ParameterGrid
 
 MODEL_EVAL_FREQ = {"RGCN": 5,
-                   "GTN": 2}
+                   "GTN": 2,
+                   "NSHE": 2}
 MODEL_MAX_EPOCHS = {'RGCN': 500,
-                    'GTN': 30}
+                    'GTN': 30,
+                    "NSHE": 50}
 PAPER_DATASET = {"GTN": ['DBLP', 'ACM'],
                  "NSHE": ['DBLP', 'ACM']}
 
@@ -16,7 +18,7 @@ PAPER_DATASET = {"GTN": ['DBLP', 'ACM'],
 # ##########################################
 
 PAPERS_TO_RUN = ['GTN', 'NSHE']
-MODELS_TO_RUN = ['GTN']
+MODELS_TO_RUN = ["NSHE", 'GTN']
 
 ALTERABLE_ARGS = {'cocluster_loss': [True, False],
                   'corruption_method': ['random', 'crossover'],
