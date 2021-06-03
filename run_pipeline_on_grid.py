@@ -11,7 +11,7 @@ MODEL_EVAL_FREQ = {"RGCN": 5,
 MODEL_MAX_EPOCHS = {'RGCN': 500,
                     'GTN': 30,
                     "NSHE": 70}
-PAPER_DATASET = {"GTN": ['DBLP', 'ACM'],
+PAPER_DATASET = {"GTN": ['DBLP'],
                  "NSHE": ['DBLP', 'ACM']}
 
 EXP_NAME_SPECIAL_NOTES = 'test_grid_run'
@@ -19,8 +19,8 @@ EXP_NAME_SPECIAL_NOTES = 'test_grid_run'
 # ##########################################
 # ##########################################
 
-PAPERS_TO_RUN = ["GTN", "NSHE"]
-MODELS_TO_RUN = ["RGCN", "NSHE", "GTN"]
+PAPERS_TO_RUN = ["GTN"]
+MODELS_TO_RUN = ["GTN"]
 
 
 #  arguments that affect runs WITH COCLUSTER_LOSS=TRUE
@@ -75,9 +75,14 @@ if __name__ == '__main__':
 
                 cprint('-->Training without cocluster loss', color='yellow')
                 setattr(args, 'cocluster_loss', False)
-                p = mp.Process(target=run_pipeline, args=(args, create_experiment_name(args, EXP_NAME_SPECIAL_NOTES)))
-                p.start()
-                p.join()
+                GTN_initial_embs = ['original']
+                if from_paper == 'GTN':
+                    GTN_initial_embs.append('deepwalk')
+                for gtn_ie in GTN_initial_embs:
+                    setattr(args, 'acm_dblp_from_gtn_initial_embs', gtn_ie)
+                    p = mp.Process(target=run_pipeline, args=(args, create_experiment_name(args, EXP_NAME_SPECIAL_NOTES)))
+                    p.start()
+                    p.join()
 
                 cprint('-->Training with cocluster loss', color='yellow')
                 setattr(args, 'cocluster_loss', True)
