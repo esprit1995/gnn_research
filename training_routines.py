@@ -1,11 +1,14 @@
 import torch
+import numpy as np
 import pandas as pd
-from models import RGCN, GTN, NSHE
-from data_transforms import GTN_for_rgcn, GTN_for_gtn, NSHE_for_rgcn, NSHE_for_gtn, GTN_or_NSHE_for_nshe
+from models import RGCN, GTN, NSHE, MAGNN
+from data_transforms import GTN_for_rgcn, GTN_for_gtn, NSHE_for_rgcn, NSHE_for_gtn, GTN_or_NSHE_for_nshe, \
+    GTN_NSHE_for_MAGNN
 from utils.tools import heterogeneous_negative_sampling_naive, IMDB_DBLP_ACM_metapath_instance_sampler, \
     label_dict_to_metadata
-from utils.losses import triplet_loss_pure, triplet_loss_type_aware, push_pull_metapath_instance_loss
+from utils.losses import triplet_loss_pure, push_pull_metapath_instance_loss
 from downstream_tasks.evaluation_funcs import evaluate_clu_cla_GTN_NSHE_datasets
+from utils.MAGNN_utils import nega_sampling, Batcher, prepare_minibatch
 
 
 def train_rgcn(args):
@@ -86,7 +89,7 @@ def train_rgcn(args):
         optimizer.step()
         if (epoch + 1) % args.downstream_eval_freq == 0:
             print('--> evaluating downstream tasks...')
-            epoch_num.append(epoch+1)
+            epoch_num.append(epoch + 1)
             metrics.append(evaluate_clu_cla_GTN_NSHE_datasets(dataset=ds, embeddings=output, verbose=False)[0])
             print("this epoch's NMI : " + str(metrics[-1]))
             print('--> done!')
@@ -135,7 +138,7 @@ def train_gtn(args):
 
         for mptemplate_idx in range(len(metapath_templates)):
             pos_instances[metapath_templates[mptemplate_idx]], \
-             neg_instances[metapath_templates[mptemplate_idx]] = IMDB_DBLP_ACM_metapath_instance_sampler(
+            neg_instances[metapath_templates[mptemplate_idx]] = IMDB_DBLP_ACM_metapath_instance_sampler(
                 dataset=ds,
                 metapath=metapath_templates[mptemplate_idx],
                 n=args.instances_per_template,
@@ -173,7 +176,7 @@ def train_gtn(args):
         optimizer.step()
         if (epoch + 1) % args.downstream_eval_freq == 0 or epoch == 0:
             print('--> evaluating downstream tasks...')
-            epoch_num.append(epoch+1)
+            epoch_num.append(epoch + 1)
             metrics.append(evaluate_clu_cla_GTN_NSHE_datasets(dataset=ds, embeddings=output, verbose=False)[0])
             print("this epoch's NMI : " + str(metrics[-1]))
             print('--> done!')
@@ -187,6 +190,7 @@ def train_nshe(args):
     # dummy class for NSHE params
     class Hyperparameters(object):
         pass
+
     # NSHE settings ##########
     hp = Hyperparameters()
     hp.conv_method = 'GCNx1'
@@ -229,7 +233,7 @@ def train_nshe(args):
 
         for mptemplate_idx in range(len(metapath_templates)):
             pos_instances[metapath_templates[mptemplate_idx]], \
-             neg_instances[metapath_templates[mptemplate_idx]] = IMDB_DBLP_ACM_metapath_instance_sampler(
+            neg_instances[metapath_templates[mptemplate_idx]] = IMDB_DBLP_ACM_metapath_instance_sampler(
                 dataset=g.ds,
                 metapath=metapath_templates[mptemplate_idx],
                 n=args.instances_per_template,
@@ -263,7 +267,7 @@ def train_nshe(args):
         optimizer.step()
         if (epoch + 1) % args.downstream_eval_freq == 0 or epoch == 0:
             print('--> evaluating downstream tasks...')
-            epoch_num.append(epoch+1)
+            epoch_num.append(epoch + 1)
             metrics.append(evaluate_clu_cla_GTN_NSHE_datasets(dataset=g.ds, embeddings=output, verbose=False)[0])
             print("this epoch's NMI : " + str(metrics[-1]))
             print('--> done!')
@@ -271,3 +275,101 @@ def train_nshe(args):
 
     all_ids, all_labels = label_dict_to_metadata(g.node_label_dict)
     return output, all_ids, all_labels, g.id_type_mask, g.ds, epoch_num, metrics
+
+
+def train_magnn(args):
+    # MAGNN settings ##########
+    hdim = 50
+    adim = 100
+    dropout = 0.5
+    device = args.device
+    nlayer = 2
+    nlabel = 0
+    rtype = 'RotatE0'
+    model_params = {'hdim': hdim, 'adim': adim,
+                    'dropout': dropout, 'nlayer': nlayer,
+                    'nlabel': nlabel, 'rtype': rtype}
+    setattr(args, 'model_params', model_params)
+
+    coclustering_metapaths_dict = {'ACM': [('0', '1', '0', '2'), ('2', '0', '1')],
+                                   'DBLP': [('0', '1', '2'), ('0', '1', '0'), ('1', '2', '1')]}
+    corruption_positions_dict = {'ACM': [(1, 2), (2, 2)],
+                                 'DBLP': [(1, 1), (1, 2), (2, 2)]}
+    # #######################
+    # ---> get necessary data structures
+    if args.from_paper in ['NSHE', 'GTN']:
+        graph_statistics, type_mask, node_labels, node_order, ntype_features, posi_edges, node_mptype_mpinstances, \
+        edge_index, id_type_mask, ds = GTN_NSHE_for_MAGNN(args)
+    else:
+        raise ValueError('MAGNN cannot be trained on datasets from paper: ' + str(args.from_paper))
+
+    # ---> additional co-clustering loss data structures
+    if args.cocluster_loss:
+        pos_instances = dict()
+        neg_instances = dict()
+
+        try:
+            metapath_templates, corruption_positions = coclustering_metapaths_dict[args.dataset], \
+                                                       corruption_positions_dict[
+                                                           args.dataset]
+        except Exception as e:
+            raise ValueError('co-clustering loss is not supported for dataset name ' + str(args.dataset))
+
+        for mptemplate_idx in range(len(metapath_templates)):
+            pos_instances[metapath_templates[mptemplate_idx]], \
+            neg_instances[metapath_templates[mptemplate_idx]] = IMDB_DBLP_ACM_metapath_instance_sampler(
+                dataset=ds,
+                metapath=metapath_templates[mptemplate_idx],
+                n=args.instances_per_template,
+                corruption_method=args.corruption_method,
+                corruption_position=corruption_positions[mptemplate_idx])
+
+    model = MAGNN(graph_statistics, hdim, adim, dropout, device, nlayer, args.nhead, nlabel,
+                  ntype_features, rtype)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    model.train()
+
+    # keeping track of performance vs #epochs
+    epoch_num = list()
+    metrics = list()
+    output = None
+    for epoch in range(args.epochs):
+        #  batcher code is conserved in for the sake of code re-usage
+        #  batcher code is corrected to perform full-batch training, hence batcher is
+        #  re-instantiated on every epoch
+        nega_edges = nega_sampling(len(type_mask), posi_edges)
+        batcher = Batcher(False, 1, [posi_edges, nega_edges])
+        batch_targets, batch_labels = batcher.next()
+        layer_ntype_mptype_g, layer_ntype_mptype_mpinstances, layer_ntype_mptype_iftargets, batch_ntype_orders = prepare_minibatch(
+            set(batch_targets.flatten()), node_mptype_mpinstances, type_mask, node_order, args.nlayer, args.sampling,
+            args.device)
+        batch_node_features, _ = model(layer_ntype_mptype_g, layer_ntype_mptype_mpinstances,
+                                       layer_ntype_mptype_iftargets, batch_ntype_orders)
+        indices = list(batch_node_features.keys())
+        assert all(indices[i] < indices[i+1] for i in range(len(indices))), \
+            "MAGNN: indices are not sorted, aborting."
+        output = torch.vstack([batch_node_features[key] for key in list(batch_node_features.keys())])
+        triplets = heterogeneous_negative_sampling_naive(edge_index, id_type_mask)
+        # regular loss: triplet loss
+        loss = triplet_loss_pure(triplets, output) if args.base_triplet_loss else 0
+        # additional co-clustering losses
+        if args.cocluster_loss:
+            mptemplates = list(pos_instances.keys())
+            for idx in range(len(mptemplates)):
+                loss = loss + args.type_lambda * push_pull_metapath_instance_loss(pos_instances[mptemplates[idx]],
+                                                                                  neg_instances[mptemplates[idx]],
+                                                                                  corruption_positions[idx],
+                                                                                  output)
+        loss.backward()
+        optimizer.step()
+        optimizer.zero_grad()
+
+        del batch_node_features, _, loss
+
+        if (epoch + 1) % args.downstream_eval_freq == 0 or epoch == 0:
+            print('--> evaluating downstream tasks...')
+            epoch_num.append(epoch + 1)
+            metrics.append(evaluate_clu_cla_GTN_NSHE_datasets(dataset=ds, embeddings=output, verbose=False)[0])
+            print("this epoch's NMI : " + str(metrics[-1]))
+            print('--> done!')
+        print("Epoch: ", epoch, " loss: ", loss)

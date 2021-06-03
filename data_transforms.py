@@ -10,6 +10,7 @@ from datasets import IMDB_ACM_DBLP_from_GTN, DBLP_ACM_IMDB_from_NSHE
 from utils.tools import node_type_encoding
 from utils.tools import normalize_adj, sparse_mx_to_torch_sparse_tensor
 from utils.NSHE_sampler import gen_neg_edges, gen_ns_instances
+from utils.MAGNN_utils import read_data
 
 
 # #############################################################
@@ -208,7 +209,7 @@ def GTN_for_gtn(args, data_dir: str = '/home/ubuntu/msandal_code/PyG_playground/
 
 
 # #############################################################
-# Architecture: NSHE. Datasets from papers: GTN               #
+# Architecture: NSHE. Datasets from papers: GTN, NSHE         #
 # Naming convention format: PAPER_for_architecture
 # #############################################################
 E_NEG_RATE = 1  # was always 1 in the original NSHE code
@@ -275,7 +276,7 @@ class GTN_or_NSHE_for_nshe(object):
 
         # --> node label dict for evaluation
         self.node_label_dict = {ds_part: self.ds[ds_part + '_id_label'] for ds_part in
-                                    ['train', 'valid', 'test']}
+                                ['train', 'valid', 'test']}
 
         # --> load the network: use data structures required by the original NSHE
         node_type_mask = dataset['node_type_mask'].numpy()
@@ -402,3 +403,106 @@ class GTN_or_NSHE_for_nshe(object):
         _get_neg_edge(epoch_seed)
         _get_ns_instance(epoch_seed)
         return
+
+
+# #############################################################
+# Architecture: MAGNN. Datasets from papers: GTN              #
+# Naming convention format: PAPER_for_architecture
+# #############################################################
+
+def GTN_NSHE_for_MAGNN(args, data_dir: str = '/home/ubuntu/msandal_code/PyG_playground/data/IMDB_ACM_DBLP',
+                       magnn_personal_storage: str = '/home/ubuntu/msandal_code/PyG_playground/data/model_data/MAGNN'):
+    """
+        prepare data structures for MAGNN architecture: GTN article datasets
+        https://github.com/seongjunyun/Graph_Transformer_Networks
+        :param args: experiment run arguments
+        :param data_dir: directory where IMDB_ACM_DBLP is stored. If doesn't exist, will be created
+        :param magnn_personal_storage: where to save data needed for MAGNN run. If does not exist, will be created
+        :return:
+        """
+    name = args.dataset
+    if name not in ['ACM', 'IMDB', 'DBLP']:
+        raise ValueError('invalid dataset name: ', name)
+
+    if args.from_paper == 'GTN':
+        dataset = IMDB_ACM_DBLP_from_GTN(root=os.path.join(data_dir, name),
+                                         name=str(name).upper(),
+                                         redownload=args.redownload_data,
+                                         initial_embs=args.acm_dblp_from_gtn_initial_embs)[0]
+    elif args.from_paper == 'NSHE':
+        dataset = DBLP_ACM_IMDB_from_NSHE(root=data_dir,
+                                          name=str(name).lower())[0]
+    else:
+        raise ValueError('MAGNN cannot be applied to datasets from paper : ' + str(args.from_paper))
+
+    path_to_files = PyG_to_MAGNN_files(dataset,
+                                       '_'.join([str(name).lower(), str(args.from_paper).lower()]),
+                                       magnn_personal_storage)
+    graph_statistics, type_mask, node_labels, node_order, ntype_features, posi_edges, node_mptype_mpinstances = \
+        read_data(nodefile=os.path.join(path_to_files, 'node.dat'),
+                  linkfile=os.path.join(path_to_files, 'link.dat'),
+                  pathfile=os.path.join(path_to_files, 'path.dat'),
+                  labelfile=None,  # only needed in supervised learning case, which we never follow
+                  attributed='True',  # in our case, the learning is always attributed
+                  supervised='False')  # in our case, the learning is always unsupervised
+    # yes. the authors of MAGNN in HNE actually used strings instead of booleans. Lol.
+
+    # edge_index, edge_type
+    edge_index = list()
+    for key in list(dataset['edge_index_dict'].keys()):
+        edge_index.append(dataset['edge_index_dict'][key])
+    edge_index = torch.cat(edge_index, dim=1)
+
+    # id_type_mask, node_feature_matrix
+    id_type_mask = dataset['node_type_mask']
+
+    return graph_statistics, type_mask, node_labels, \
+           node_order, ntype_features, posi_edges, node_mptype_mpinstances, \
+           id_type_mask, edge_index, dataset
+
+
+def PyG_to_MAGNN_files(ds, ds_name, save_to) -> str:
+    """
+    create files needed for MAGNN run on a given dataset: link.dat and node.dat
+    if for the given dataset these files already exist, they will be overwritten
+    :param ds: dataset to convert
+    :param ds_name: name of the dataset. example: dblp_gtn
+    :param save_to: where to save the results to
+    :return: directory containing the results
+    """
+    if not os.path.exists(os.path.join(save_to, ds_name)):
+        Path(os.path.join(save_to, ds_name)).mkdir(exist_ok=True, parents=True)
+    if os.path.exists(os.path.join(save_to, ds_name, 'link.dat')):
+        os.remove(os.path.join(save_to, ds_name, 'link.dat'))
+    if os.path.exists(os.path.join(save_to, ds_name, 'node.dat')):
+        os.remove(os.path.join(save_to, ds_name, 'node.dat'))
+    open(os.path.join(save_to, ds_name, 'link.dat'), 'w').close()
+    open(os.path.join(save_to, ds_name, 'node.dat'), 'w').close()
+
+    # create node data
+    with open(os.path.join(save_to, ds_name, 'node.dat'), 'a') as f:
+        for idx in range(ds['node_features'].shape[0]):
+            line = ''
+            line += (str(idx) + '\t' + str(ds['node_type_mask'][idx].item()) + '\t')
+            for j in range(ds['node_features'].shape[1]):
+                line += str(ds['node_features'][idx][j].item()) + ','
+            line = line[:-1]
+            line = line + '\n'
+            f.write(line)
+
+    # create link data
+    with open(os.path.join(save_to, ds_name, 'link.dat'), 'a') as f:
+        for etype, key in enumerate(list(ds['edge_index_dict'].keys())):
+            edge_index = ds['edge_index_dict'][key].numpy()
+            for i in range(edge_index.shape[1]):
+                line = str(edge_index[0, i]) + '\t' + str(edge_index[1, i]) + '\t' + str(etype)
+                line = line + '\n'
+                f.write(line)
+
+    # if path file doesn't exist, create it
+    # default paths are simply edge types that are present in edge_index_dict of the ds
+    if not os.path.exists(os.path.join(save_to, ds_name, 'path.dat')):
+        with open(os.path.join(save_to, ds_name, 'path.dat'), 'w+') as f:
+            for key in list(ds['edge_index_dict'].keys()):
+                f.write(str(key[0]) + '\t' + str(key[1]) + '\n')
+    return str(os.path.join(save_to, ds_name))

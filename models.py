@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -7,7 +8,7 @@ from torch_geometric.typing import OptTensor, Adj
 
 from conv import GTLayer
 from conv import GraphConvolution, GraphAttentionConvolution
-
+from conv import MAGNN_mptype_layer, MAGNN_ntype_layer, MAGNN_layer
 # ###############################################
 #   Relational Graph Convolution Network (RGCN)
 # ###############################################
@@ -229,3 +230,69 @@ class NSHE(nn.Module):
             com_emb = F.normalize(com_emb, p=2, dim=1)
 
         return com_emb
+
+
+# ###############################################
+#  Metapath Aggregating Graph Neural Network (MAGNN)
+# ###############################################
+class MAGNN(nn.Module):
+
+    # graph_statistics: num_etype (hetero edges only), {ntype: idim}, {ntype: mptype: etypes (homo edges are typed None)}
+    def __init__(self, graph_statistics, hdim, adim, dropout, device, nlayer, nhead, nlabel=0, ntype_features={},
+                 rtype='RotatE0'):
+        super(MAGNN, self).__init__()
+
+        self.device = device
+        self.attributed = False if len(ntype_features) == 0 else True
+        self.supervised = False if nlabel == 0 else True
+
+        # ntype-specific transformation
+        self.ntype_transformation = {}
+        for ntype, idim in graph_statistics['ntype_idim'].items():
+            if self.attributed:
+                self.ntype_transformation[ntype] = (
+                nn.Embedding.from_pretrained(torch.from_numpy(ntype_features[ntype])).to(self.device),
+                nn.Linear(idim, hdim, bias=True).to(self.device))
+                nn.init.xavier_normal_(self.ntype_transformation[ntype][1].weight, gain=1.414)
+            else:
+                self.ntype_transformation[ntype] = nn.Embedding(idim, hdim).to(self.device)
+        self.feat_drop = nn.Dropout(dropout) if dropout > 0 else lambda x: x
+
+        # MAGNN layers
+        self.MAGNN_layers = nn.ModuleList()
+        for l in range(nlayer):
+            self.MAGNN_layers.append(MAGNN_layer(graph_statistics, hdim, hdim, adim, device, nhead, dropout, rtype))
+
+        # prediction layer
+        if self.supervised:
+            self.final = nn.Linear(hdim, nlabel, bias=True).to(self.device)
+            nn.init.xavier_normal_(self.final.weight, gain=1.414)
+
+    def forward(self, layer_ntype_mptype_g, layer_ntype_mptype_mpinstances, layer_ntype_mptype_iftargets,
+                batch_ntype_orders):
+
+        # ntype-specific transformation
+        node_features = {}
+        for ntype, node_orders in batch_ntype_orders.items():
+            inputs = torch.from_numpy(np.array(list(node_orders.values())).astype(np.int64)).to(self.device)
+            if self.attributed:
+                transformed = self.ntype_transformation[ntype][1](self.ntype_transformation[ntype][0](inputs))
+            else:
+                transformed = self.ntype_transformation[ntype](inputs)
+            transformed = self.feat_drop(transformed)
+            node_features.update({node: feature for node, feature in zip(node_orders, transformed)})
+
+        # MAGNN layers
+        for l, layer in enumerate(self.MAGNN_layers):
+            node_features = layer(layer_ntype_mptype_g[l], layer_ntype_mptype_mpinstances[l],
+                                  layer_ntype_mptype_iftargets[l], node_features)
+
+        node_preds = {}
+        if self.supervised:
+            inputs = torch.stack(list(node_features.values()))
+            preds = self.final(inputs)
+            node_preds.update({node: pred for node, pred in zip(node_features, preds)})
+
+        if self.device == 'cuda': torch.cuda.empty_cache()
+
+        return node_features, node_preds
