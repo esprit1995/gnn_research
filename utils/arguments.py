@@ -20,7 +20,7 @@ def model_run_argparse():
     parser.add_argument('--redownload_data', type=str2bool, default=False,
                         help='whether to redownload data in case it is already available')
     parser.add_argument('--model', type=str, default='RGCN',
-                        help='which model to use. available: any of [RGCN, GTN]. Default=RGCN')
+                        help='which model to use. available: any of [RGCN, GTN, NSHE, MAGNN]. Default=RGCN')
     parser.add_argument('--epochs', type=int, default=100,
                         help='number of epochs to train. Default 100')
     parser.add_argument('--downstream_eval_freq', type=int, default=10,

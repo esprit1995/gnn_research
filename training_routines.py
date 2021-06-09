@@ -285,10 +285,13 @@ def train_magnn(args):
     device = args.device
     nlayer = 2
     nlabel = 0
+    nhead = 8
     rtype = 'RotatE0'
+    sampling = 100
     model_params = {'hdim': hdim, 'adim': adim,
                     'dropout': dropout, 'nlayer': nlayer,
-                    'nlabel': nlabel, 'rtype': rtype}
+                    'nlabel': nlabel, 'nhead': nhead,
+                    'rtype': rtype, 'sampling': sampling}
     setattr(args, 'model_params', model_params)
 
     coclustering_metapaths_dict = {'ACM': [('0', '1', '0', '2'), ('2', '0', '1')],
@@ -299,7 +302,7 @@ def train_magnn(args):
     # ---> get necessary data structures
     if args.from_paper in ['NSHE', 'GTN']:
         graph_statistics, type_mask, node_labels, node_order, ntype_features, posi_edges, node_mptype_mpinstances, \
-        edge_index, id_type_mask, ds = GTN_NSHE_for_MAGNN(args)
+        node_label_dict, id_type_mask, edge_index, ds = GTN_NSHE_for_MAGNN(args)
     else:
         raise ValueError('MAGNN cannot be trained on datasets from paper: ' + str(args.from_paper))
 
@@ -324,7 +327,7 @@ def train_magnn(args):
                 corruption_method=args.corruption_method,
                 corruption_position=corruption_positions[mptemplate_idx])
 
-    model = MAGNN(graph_statistics, hdim, adim, dropout, device, nlayer, args.nhead, nlabel,
+    model = MAGNN(graph_statistics, hdim, adim, dropout, device, nlayer, nhead, nlabel,
                   ntype_features, rtype)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     model.train()
@@ -337,18 +340,26 @@ def train_magnn(args):
         #  batcher code is conserved in for the sake of code re-usage
         #  batcher code is corrected to perform full-batch training, hence batcher is
         #  re-instantiated on every epoch
+        if epoch == 0:
+            # evaluate the downstream tasks on the initial embeddings
+            print('Evaluating initial embeddings...')
+            init_feats = np.vstack([ntype_features[0], ntype_features[1], ntype_features[2]])
+            NMI_init = evaluate_clu_cla_GTN_NSHE_datasets(dataset=ds, embeddings=init_feats, verbose=False)[0]
+            print('NMI on the initial embeddings: ' + str(NMI_init))
         nega_edges = nega_sampling(len(type_mask), posi_edges)
         batcher = Batcher(False, 1, [posi_edges, nega_edges])
         batch_targets, batch_labels = batcher.next()
         layer_ntype_mptype_g, layer_ntype_mptype_mpinstances, layer_ntype_mptype_iftargets, batch_ntype_orders = prepare_minibatch(
-            set(batch_targets.flatten()), node_mptype_mpinstances, type_mask, node_order, args.nlayer, args.sampling,
+            set(batch_targets.flatten()), node_mptype_mpinstances, type_mask, node_order, nlayer, sampling,
             args.device)
+
         batch_node_features, _ = model(layer_ntype_mptype_g, layer_ntype_mptype_mpinstances,
                                        layer_ntype_mptype_iftargets, batch_ntype_orders)
         indices = list(batch_node_features.keys())
-        assert all(indices[i] < indices[i+1] for i in range(len(indices))), \
+        assert all(indices[i] < indices[i+1] for i in range(len(indices)-1)), \
             "MAGNN: indices are not sorted, aborting."
         output = torch.vstack([batch_node_features[key] for key in list(batch_node_features.keys())])
+
         triplets = heterogeneous_negative_sampling_naive(edge_index, id_type_mask)
         # regular loss: triplet loss
         loss = triplet_loss_pure(triplets, output) if args.base_triplet_loss else 0
@@ -364,12 +375,14 @@ def train_magnn(args):
         optimizer.step()
         optimizer.zero_grad()
 
-        del batch_node_features, _, loss
-
+        del batch_node_features, _
+        print("Epoch: ", epoch, " loss: ", loss)
         if (epoch + 1) % args.downstream_eval_freq == 0 or epoch == 0:
             print('--> evaluating downstream tasks...')
             epoch_num.append(epoch + 1)
             metrics.append(evaluate_clu_cla_GTN_NSHE_datasets(dataset=ds, embeddings=output, verbose=False)[0])
             print("this epoch's NMI : " + str(metrics[-1]))
             print('--> done!')
-        print("Epoch: ", epoch, " loss: ", loss)
+
+    all_ids, all_labels = label_dict_to_metadata(node_label_dict)
+    return output, all_ids, all_labels, id_type_mask, ds, epoch_num, metrics

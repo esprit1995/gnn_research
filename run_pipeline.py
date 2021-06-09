@@ -9,7 +9,7 @@ import tensorboard as tb
 
 from datetime import datetime
 
-from training_routines import train_rgcn, train_gtn, train_nshe
+from training_routines import train_rgcn, train_gtn, train_nshe, train_magnn
 from utils.arguments import model_run_argparse
 from utils.visualization import draw_embeddings
 from torch.utils.tensorboard import SummaryWriter
@@ -35,6 +35,8 @@ def run_pipeline(args_, experiment_name_: str = ''):
         output, metadata_ids, metadata_labels, metadata_types, dataset, epochs_num, metrics = train_gtn(args_)
     elif args_.model == 'NSHE':
         output, metadata_ids, metadata_labels, metadata_types, dataset, epochs_num, metrics = train_nshe(args_)
+    elif args_.model == 'MAGNN':
+        output, metadata_ids, metadata_labels, metadata_types, dataset, epochs_num, metrics = train_magnn(args_)
     # elif args_.model == 'HAN':
     #     output, metadata = train_han(args_)
     else:

@@ -456,9 +456,13 @@ def GTN_NSHE_for_MAGNN(args, data_dir: str = '/home/ubuntu/msandal_code/PyG_play
     # id_type_mask, node_feature_matrix
     id_type_mask = dataset['node_type_mask']
 
+    # node_labels_dict
+    node_labels_dict = {ds_part: dataset[ds_part + '_id_label'] for ds_part in
+                        ['train', 'valid', 'test']}
+
     return graph_statistics, type_mask, node_labels, \
            node_order, ntype_features, posi_edges, node_mptype_mpinstances, \
-           id_type_mask, edge_index, dataset
+           node_labels_dict, id_type_mask, edge_index, dataset
 
 
 def PyG_to_MAGNN_files(ds, ds_name, save_to) -> str:
