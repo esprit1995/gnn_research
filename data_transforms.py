@@ -6,6 +6,7 @@ import os
 import pickle
 
 from pathlib import Path
+from competitors_perf.competitors_perf_helper_funcs import NSHE_or_GTN_dataset_for_HeGAN
 from datasets import IMDB_ACM_DBLP_from_GTN, DBLP_ACM_IMDB_from_NSHE
 from utils.tools import node_type_encoding
 from utils.tools import normalize_adj, sparse_mx_to_torch_sparse_tensor
@@ -406,7 +407,7 @@ class GTN_or_NSHE_for_nshe(object):
 
 
 # #############################################################
-# Architecture: MAGNN. Datasets from papers: GTN              #
+# Architecture: MAGNN. Datasets from papers: GTN, NSHE        #
 # Naming convention format: PAPER_for_architecture
 # #############################################################
 
@@ -510,3 +511,60 @@ def PyG_to_MAGNN_files(ds, ds_name, save_to) -> str:
             for key in list(ds['edge_index_dict'].keys()):
                 f.write(str(key[0]) + '\t' + str(key[1]) + '\n')
     return str(os.path.join(save_to, ds_name))
+
+
+# #############################################################
+# Architecture: HeGAN. Datasets from papers: GTN, NSHE        #
+# Naming convention format: PAPER_for_architecture
+# #############################################################
+def GTN_NSHE_for_HeGAN(args, data_dir: str = '/home/ubuntu/msandal_code/PyG_playground/data/IMDB_ACM_DBLP',
+                       hegan_personal_storage: str = '/home/ubuntu/msandal_code/PyG_playground/data/model_data/HeGAN'):
+    """
+    prepare data structures for HeGAN architecture: GTN article datasets
+    https://github.com/seongjunyun/Graph_Transformer_Networks
+    :param args: experiment run arguments
+    :param data_dir: directory where IMDB_ACM_DBLP is stored. If doesn't exist, will be created
+    :param magnn_personal_storage: where to save data needed for MAGNN run. If does not exist, will be created
+    :return:
+    """
+    name = args.dataset
+    root = None
+    if name not in ['ACM', 'IMDB', 'DBLP']:
+        raise ValueError('invalid dataset name: ', name)
+
+    if args.from_paper == 'GTN':
+        root = os.path.join(data_dir, name)
+        dataset = IMDB_ACM_DBLP_from_GTN(root=root,
+                                         name=str(name).upper(),
+                                         redownload=args.redownload_data,
+                                         initial_embs=args.acm_dblp_from_gtn_initial_embs)[0]
+    elif args.from_paper == 'NSHE':
+        root = data_dir
+        dataset = DBLP_ACM_IMDB_from_NSHE(root=root,
+                                          name=str(name).lower())[0]
+    else:
+        raise ValueError('HeGAN cannot be applied to datasets from paper : ' + str(args.from_paper))
+
+    path_to_files = PyG_to_HeGAN_files(dataset,
+                                       str(name).lower(), str(args.from_paper).lower(),
+                                       root,
+                                       hegan_personal_storage)
+
+
+def PyG_to_HeGAN_files(ds, ds_name, ds_paper, pyg_root, save_to):
+    """
+
+    :param ds:
+    :param ds_name:
+    :param ds_paper:
+    :param pyg_root:
+    :param save_to:
+    :return:
+    """
+    if not os.path.exists(os.path.join(save_to, '_'.join([ds_name.lower(), ds_paper.lower()]))):
+        Path(os.path.join(save_to, '_'.join([ds_name.lower(), ds_paper.lower()]))).mkdir(exist_ok=True, parents=True)
+    NSHE_or_GTN_dataset_for_HeGAN(name=ds_name.lower(),
+                                  from_paper=ds_paper.lower(),
+                                  root=pyg_root,
+                                  output_dir=os.path.join(save_to, '_'.join([ds_name.lower(), ds_paper.lower()])))
+    return os.path.join(save_to, '_'.join([ds_name.lower(), ds_paper.lower()]))

@@ -136,9 +136,9 @@ def NSHE_or_GTN_dataset_for_HeGAN(root='/home/ubuntu/msandal_code/PyG_playground
     :return:
     """
     assert str(from_paper).lower() in ['nshe', 'gtn'], \
-        'NSHE_dataset_to_edgelist(): invalid paper'
+        'NSHE_or_GTN_dataset_for_HeGAN(): invalid paper'
     assert str(name).lower() in ['dblp', 'acm', 'imdb'], \
-        'NSHE_dataset_to_edgelist(): invalid dataset name required'
+        'NSHE_or_GTN_dataset_for_HeGAN(): invalid dataset name required'
     if from_paper.lower() == 'nshe':
         ds = DBLP_ACM_IMDB_from_NSHE(root=root, name=str(name).lower())[0]
     else:
@@ -161,7 +161,7 @@ def NSHE_or_GTN_dataset_for_HeGAN(root='/home/ubuntu/msandal_code/PyG_playground
     node_feature_df = pd.DataFrame(data=np.c_[ids, node_features])
 
     # ===> save results in folder
-    saving_path = os.path.join(output_dir, '_'.join([name, from_paper, 'for_HeGAN']))
+    saving_path = output_dir
     Path(saving_path).mkdir(parents=True, exist_ok=True)
     triples.to_csv(os.path.join(saving_path, name + '_' + from_paper + '_triple.dat'),
                    sep=' ',
