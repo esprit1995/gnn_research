@@ -64,7 +64,11 @@ def train_rgcn(args):
     losses = []
     # keeping track of performance vs #epochs
     epoch_num = list()
-    metrics = list()
+    metrics = {'nmi': list(),
+               'ari': list(),
+               'macrof1': list(),
+               'microf1': list()}
+
     for epoch in range(args.epochs):
         model = model.float()
         output = model(x=node_feature_matrix.float(),
@@ -87,11 +91,16 @@ def train_rgcn(args):
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-        if (epoch + 1) % args.downstream_eval_freq == 0:
+        if (epoch + 1) % args.downstream_eval_freq == 0 or epoch == 0:
             print('--> evaluating downstream tasks...')
             epoch_num.append(epoch + 1)
-            metrics.append(evaluate_clu_cla_GTN_NSHE_datasets(dataset=ds, embeddings=output, verbose=False)[0])
-            print("this epoch's NMI : " + str(metrics[-1]))
+            nmi, ari, microf1, macrof1 = evaluate_clu_cla_GTN_NSHE_datasets(dataset=ds, embeddings=output, verbose=False)
+            metrics['nmi'].append(nmi)
+            metrics['ari'].append(ari)
+            metrics['microf1'].append(microf1)
+            metrics['macrof1'].append(macrof1)
+            print("this epoch's NMI : " + str(nmi))
+            print("this epoch's ARI : " + str(ari))
             print('--> done!')
         if epoch % 5 == 0:
             print("Epoch: ", epoch, " loss: ", loss)
@@ -156,7 +165,10 @@ def train_gtn(args):
     optimizer = torch.optim.Adam(model.parameters(), lr=0.005, weight_decay=args.weight_decay)
     # keeping track of performance vs #epochs
     epoch_num = list()
-    metrics = list()
+    metrics = {'nmi': list(),
+               'ari': list(),
+               'macrof1': list(),
+               'microf1': list()}
     output = None
     for epoch in range(args.epochs):
         model.zero_grad()
@@ -177,8 +189,14 @@ def train_gtn(args):
         if (epoch + 1) % args.downstream_eval_freq == 0 or epoch == 0:
             print('--> evaluating downstream tasks...')
             epoch_num.append(epoch + 1)
-            metrics.append(evaluate_clu_cla_GTN_NSHE_datasets(dataset=ds, embeddings=output, verbose=False)[0])
-            print("this epoch's NMI : " + str(metrics[-1]))
+            nmi, ari, microf1, macrof1 = evaluate_clu_cla_GTN_NSHE_datasets(dataset=ds, embeddings=output,
+                                                                            verbose=False)
+            metrics['nmi'].append(nmi)
+            metrics['ari'].append(ari)
+            metrics['microf1'].append(microf1)
+            metrics['macrof1'].append(macrof1)
+            print("this epoch's NMI : " + str(nmi))
+            print("this epoch's ARI : " + str(ari))
             print('--> done!')
         print("Epoch: ", epoch, " loss: ", loss)
 
@@ -246,7 +264,10 @@ def train_nshe(args):
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     # keeping track of performance vs #epochs
     epoch_num = list()
-    metrics = list()
+    metrics = {'nmi': list(),
+               'ari': list(),
+               'macrof1': list(),
+               'microf1': list()}
     output = None
     for epoch in range(args.epochs):
         model.zero_grad()
@@ -268,8 +289,14 @@ def train_nshe(args):
         if (epoch + 1) % args.downstream_eval_freq == 0 or epoch == 0:
             print('--> evaluating downstream tasks...')
             epoch_num.append(epoch + 1)
-            metrics.append(evaluate_clu_cla_GTN_NSHE_datasets(dataset=g.ds, embeddings=output, verbose=False)[0])
-            print("this epoch's NMI : " + str(metrics[-1]))
+            nmi, ari, microf1, macrof1 = evaluate_clu_cla_GTN_NSHE_datasets(dataset=ds, embeddings=output,
+                                                                            verbose=False)
+            metrics['nmi'].append(nmi)
+            metrics['ari'].append(ari)
+            metrics['microf1'].append(microf1)
+            metrics['macrof1'].append(macrof1)
+            print("this epoch's NMI : " + str(nmi))
+            print("this epoch's ARI : " + str(ari))
             print('--> done!')
         print("Epoch: ", epoch, " loss: ", loss)
 
@@ -334,7 +361,10 @@ def train_magnn(args):
 
     # keeping track of performance vs #epochs
     epoch_num = list()
-    metrics = list()
+    metrics = {'nmi': list(),
+               'ari': list(),
+               'macrof1': list(),
+               'microf1': list()}
     output = None
     for epoch in range(args.epochs):
         #  batcher code is conserved in for the sake of code re-usage
@@ -380,8 +410,14 @@ def train_magnn(args):
         if (epoch + 1) % args.downstream_eval_freq == 0 or epoch == 0:
             print('--> evaluating downstream tasks...')
             epoch_num.append(epoch + 1)
-            metrics.append(evaluate_clu_cla_GTN_NSHE_datasets(dataset=ds, embeddings=output, verbose=False)[0])
-            print("this epoch's NMI : " + str(metrics[-1]))
+            nmi, ari, microf1, macrof1 = evaluate_clu_cla_GTN_NSHE_datasets(dataset=ds, embeddings=output,
+                                                                            verbose=False)
+            metrics['nmi'].append(nmi)
+            metrics['ari'].append(ari)
+            metrics['microf1'].append(microf1)
+            metrics['macrof1'].append(macrof1)
+            print("this epoch's NMI : " + str(nmi))
+            print("this epoch's ARI : " + str(ari))
             print('--> done!')
 
     all_ids, all_labels = label_dict_to_metadata(node_label_dict)

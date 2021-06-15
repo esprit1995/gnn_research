@@ -53,25 +53,26 @@ def run_pipeline(args_, experiment_name_: str = ''):
 
     # downstream tasks evaluation
     warnings.simplefilter('ignore')
-    NMI, ARI, microF1, macroF1 = evaluate_clu_cla_GTN_NSHE_datasets(dataset, output)
-    best_NMI = max(metrics)
-    best_NMI_at_epoch = epochs_num[metrics.index(max(metrics))]
-    print('best performance (NMI clu) achieved at epoch: ' + str(best_NMI_at_epoch))
-    print('and is equal to: ' + str(best_NMI))
+    performances_dict = {}
+    for metricname in list(metrics.keys()):
+        best = max(metrics[metricname])
+        best_epoch = epochs_num[metrics[metricname].index(best)]
+        performances_dict['best_' + str(metricname)] = best
+        performances_dict['best_' + str(metricname) + '_at_epoch'] = best_epoch
+    print('best performance (NMI clu) achieved at epoch: ' + str(performances_dict['best_nmi_at_epoch']))
+    print('and is equal to: ' + str(performances_dict['best_nmi']))
     warnings.simplefilter('default')
-    performances_dict = {"NMI": NMI, "ARI": ARI,
-                         "microF1": microF1, "macroF1": macroF1,
-                         "best_NMI": best_NMI, "best_NMI_at_epoch": best_NMI_at_epoch}
+
 
     # recording experiment results locally
     record_experiment_locally(os.getcwd(), experiment_name_, output, performances_dict,
-                              [epochs_num, metrics], args_,
+                              [epochs_num, metrics['nmi']], args_,
                               additional_info=str(args_.model) + "_typeAwareBool" + str(args_.type_aware_loss))
 
 
 if __name__ == "__main__":
     args = model_run_argparse()
-    special_notes = ''
+    special_notes = 'testing_new_recording'
     if args.dataset in ['DBLP', 'ACM'] and args.from_paper == 'GTN':
         dataset_name = '_'.join([args.dataset, 'from', args.from_paper, 'initial_embs', args.acm_dblp_from_gtn_initial_embs])
     else:

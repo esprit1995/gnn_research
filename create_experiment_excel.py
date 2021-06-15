@@ -8,7 +8,7 @@ import warnings
 from termcolor import cprint
 from pathlib import Path
 
-AVAILABLE_MODELS = ['RGCN', 'NSHE', 'GTN']
+AVAILABLE_MODELS = ['RGCN', 'NSHE', 'GTN', 'MAGNN']
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--experiments_path', type=str, default=os.path.join(os.getcwd(), 'experiment_records'),
@@ -55,54 +55,50 @@ def collect_model_results(model_name: str,
         relevant_dirs.append(filename)
 
     cprint('#relevant dirs found: ' + str(len(relevant_dirs)), color='cyan')
-
-    result = pd.DataFrame(columns=['model', 'dataset', 'epochs',
-                                   'argparse_args',
-                                   'cocluster_loss', 'lambda',
-                                   'NMI', 'ARI',
-                                   'microF1', 'macroF1', 'best_NMI', 'best_NMI_epoch'])
+    if len(relevant_dirs) == 0:
+        return
+    result = None
+    metric_names = None
     for dirname in relevant_dirs:
         directory = os.path.join(experiments_path, dirname)
         argparse_filename = [elem for elem in os.listdir(directory) if re.match('argparse_*', elem)][0]
         metrics_filename = [elem for elem in os.listdir(directory) if re.match('perf_metrics*', elem)][0]
         argparse_args = json.load(open(os.path.join(directory, argparse_filename), 'r'))
         metrics = json.load(open(os.path.join(directory, metrics_filename), 'r'))
+        METRIC_COLS = sorted([elem for elem in list(metrics.keys())])
+        metric_names = [elem for elem in METRIC_COLS]
+        new_row = pd.DataFrame({**{'model': argparse_args['model'],
+                                   'dataset': '_'.join([argparse_args['dataset'], argparse_args['from_paper']]),
+                                   'initial_embs_GTN_paper': argparse_args["acm_dblp_from_gtn_initial_embs"],
+                                   'epochs': argparse_args['epochs'],
+                                   'argparse_args': json.dumps(argparse_args),
+                                   'cocluster_loss': bool(argparse_args['cocluster_loss']),
+                                   'lambda': argparse_args['type_lambda'],
+                                   'corruption_method': argparse_args['corruption_method']},
+                                **{metric: metrics[metric] for metric in METRIC_COLS}}, index=[0])
+        if not result is None:
+            result = result.append(new_row)
+        else:
+            result = new_row
 
-        new_row = pd.DataFrame({'model': argparse_args['model'],
-                                'dataset': '_'.join([argparse_args['dataset'], argparse_args['from_paper']]),
-                                'initial_embs_GTN_paper': argparse_args["acm_dblp_from_gtn_initial_embs"],
-                                'epochs': argparse_args['epochs'],
-                                'argparse_args': json.dumps(argparse_args),
-                                'cocluster_loss': bool(argparse_args['cocluster_loss']),
-                                'lambda': argparse_args['type_lambda'],
-                                'corruption_method': argparse_args['corruption_method'],
-                                'NMI': metrics['NMI'],
-                                'ARI': metrics['ARI'],
-                                'microF1': metrics['microF1'],
-                                'macroF1': metrics['macroF1'],
-                                'best_NMI': metrics['best_NMI'],
-                                'best_NMI_epoch': metrics['best_NMI_at_epoch']}, index=[0])
-        result = result.append(new_row)
-
-    #  if cocluster loss == False, other parameters don't matter.
-    #  that's why we drop duplicates like follows:
-    result = pd.concat([result.query('cocluster_loss==False') \
-                       .drop_duplicates(['model', 'dataset', 'initial_embs_GTN_paper', 'cocluster_loss']),
-                        result.query('cocluster_loss==True')])
+    # #  if cocluster loss == False, other parameters don't matter.
+    # #  that's why we drop duplicates like follows:
+    # result = pd.concat([result.query('cocluster_loss==False') \
+    #                    .drop_duplicates(['model', 'dataset', 'initial_embs_GTN_paper', 'cocluster_loss']),
+    #                     result.query('cocluster_loss==True')])
     result_final = pd.DataFrame(columns=['model', 'dataset', 'initial_embs_GTN_paper', 'epochs',
                                          'argparse_args',
-                                         'cocluster_loss', 'lambda', 'corruption_method',
-                                         'NMI', 'ARI',
-                                         'microF1', 'macroF1', 'best_NMI', 'best_NMI_epoch',
-                                         'best_NMI_gain'])
+                                         'cocluster_loss', 'lambda', 'corruption_method'] + metric_names +
+                                [metric_name + '_gain' for metric_name in metric_names if 'epoch' not in metric_name])
+
     for _, group in result.groupby(['model', 'dataset', 'initial_embs_GTN_paper']):
-        baseline = group[group['cocluster_loss'] == False][['best_NMI']].reset_index(drop=True)
-        for col in ['best_NMI']:
+        baseline = group[group['cocluster_loss'] == False][metric_names].reset_index(drop=True)
+        for col in [elem for elem in metric_names if 'epoch' not in elem]:
             group[col + '_gain'] = group[col].apply(lambda x: (x - baseline.loc[0, col]) / baseline.loc[0, col] * 100)
         result_final = result_final.append(group)
     result_final = result_final.sort_values(by=['model', 'dataset', 'initial_embs_GTN_paper',
                                                 'cocluster_loss', 'lambda'])
-    for col in ['NMI', 'ARI', 'microF1', 'macroF1', 'best_NMI_gain', 'best_NMI']:
+    for col in metric_names + [elem + '_gain' for elem in metric_names if 'epoch' not in elem]:
         result_final[col] = result_final[col].apply(lambda x: round(float(x), 3))
     warnings.simplefilter('default')
     return result_final.reset_index(drop=True)

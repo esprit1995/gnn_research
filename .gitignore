@@ -17,7 +17,7 @@ runs/*
 dblp/*
 experiment_records/*
 html_viz/*
-
+temp_exps_copy/*
 # miscellaneous
 nohup.out
 
