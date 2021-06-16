@@ -518,15 +518,26 @@ def PyG_to_MAGNN_files(ds, ds_name, save_to) -> str:
 # Naming convention format: PAPER_for_architecture
 # #############################################################
 def GTN_NSHE_for_HeGAN(args, data_dir: str = '/home/ubuntu/msandal_code/PyG_playground/data/IMDB_ACM_DBLP',
-                       hegan_personal_storage: str = '/home/ubuntu/msandal_code/PyG_playground/data/model_data/HeGAN'):
+                       hegan_personal_storage: str = '/home/ubuntu/msandal_code/PyG_playground/data/model_data/HeGAN',
+                       model_params: dict = None):
     """
     prepare data structures for HeGAN architecture: GTN article datasets
     https://github.com/seongjunyun/Graph_Transformer_Networks
     :param args: experiment run arguments
     :param data_dir: directory where IMDB_ACM_DBLP is stored. If doesn't exist, will be created
-    :param magnn_personal_storage: where to save data needed for MAGNN run. If does not exist, will be created
+    :param hegan_personal_storage: where to save data needed for MAGNN run. If does not exist, will be created
+    :param model_params: dictionary containing the model parameters
     :return:
     """
+    if model_params is None:
+        print('model_params argument should not be None. please provide a valid dictionary')
+        return
+
+    class CONFIG_CLASS:
+        def __init__(self):
+            pass
+
+    config = CONFIG_CLASS()
     name = args.dataset
     root = None
     if name not in ['ACM', 'IMDB', 'DBLP']:
@@ -545,13 +556,39 @@ def GTN_NSHE_for_HeGAN(args, data_dir: str = '/home/ubuntu/msandal_code/PyG_play
     else:
         raise ValueError('HeGAN cannot be applied to datasets from paper : ' + str(args.from_paper))
 
-    path_to_files = PyG_to_HeGAN_files(dataset,
-                                       str(name).lower(), str(args.from_paper).lower(),
-                                       root,
-                                       hegan_personal_storage)
+    # record the model parameters in config
+    for key in list(model_params.keys()):
+        setattr(config, key, model_params[key])
+
+    # create files necessary for the run of original HeGAN code
+    # create corresponding entries in the config object
+    path_to_files, graph_filename, pretrain_filename = PyG_to_HeGAN_files(str(name).lower(),
+                                                                          str(args.from_paper).lower(),
+                                                                          root,
+                                                                          hegan_personal_storage)
+    setattr(config, 'graph_filename', os.path.join(path_to_files, graph_filename))
+    setattr(config, 'pretrain_node_emb_filename_d', os.path.join(path_to_files, pretrain_filename))
+    setattr(config, 'pretrain_node_emb_filename_g', os.path.join(path_to_files, pretrain_filename))
+
+    # record the initial embeddings dim in the config object
+    setattr(config, 'n_emb', dataset['node_features'].shape[1])
+
+    # edge_index, edge_type
+    edge_index = list()
+    for key in list(dataset['edge_index_dict'].keys()):
+        edge_index.append(dataset['edge_index_dict'][key])
+    edge_index = torch.cat(edge_index, dim=1)
+
+    # id_type_mask, node_feature_matrix
+    id_type_mask = dataset['node_type_mask']
+
+    # node_labels_dict
+    node_labels_dict = {ds_part: dataset[ds_part + '_id_label'] for ds_part in
+                        ['train', 'valid', 'test']}
+    return config, node_labels_dict, id_type_mask, edge_index, dataset
 
 
-def PyG_to_HeGAN_files(ds, ds_name, ds_paper, pyg_root, save_to):
+def PyG_to_HeGAN_files(ds_name, ds_paper, pyg_root, save_to):
     """
 
     :param ds:
@@ -561,10 +598,13 @@ def PyG_to_HeGAN_files(ds, ds_name, ds_paper, pyg_root, save_to):
     :param save_to:
     :return:
     """
-    if not os.path.exists(os.path.join(save_to, '_'.join([ds_name.lower(), ds_paper.lower()]))):
-        Path(os.path.join(save_to, '_'.join([ds_name.lower(), ds_paper.lower()]))).mkdir(exist_ok=True, parents=True)
+    path_to_files = os.path.join(save_to, '_'.join([ds_name.lower(), ds_paper.lower()]))
+    if not os.path.exists(path_to_files):
+        Path(path_to_files).mkdir(exist_ok=True, parents=True)
     NSHE_or_GTN_dataset_for_HeGAN(name=ds_name.lower(),
                                   from_paper=ds_paper.lower(),
                                   root=pyg_root,
-                                  output_dir=os.path.join(save_to, '_'.join([ds_name.lower(), ds_paper.lower()])))
-    return os.path.join(save_to, '_'.join([ds_name.lower(), ds_paper.lower()]))
+                                  output_dir=path_to_files)
+    graph_filename = ds_name.lower() + '_' + ds_paper.lower() + '_triple.dat'
+    pretrain_filename = ds_name.lower() + '_' + ds_paper.lower() + '_pre_train.emb'
+    return path_to_files, graph_filename, pretrain_filename

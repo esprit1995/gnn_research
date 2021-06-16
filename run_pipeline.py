@@ -2,18 +2,16 @@ import os
 import shutil
 import warnings
 import torch
-import numpy as np
 
 import tensorflow as tf
 import tensorboard as tb
 
 from datetime import datetime
 
-from training_routines import train_rgcn, train_gtn, train_nshe, train_magnn
+from training_routines import train_rgcn, train_gtn, train_nshe, train_magnn, train_hegan
 from utils.arguments import model_run_argparse
 from utils.visualization import draw_embeddings
 from torch.utils.tensorboard import SummaryWriter
-from downstream_tasks.evaluation_funcs import evaluate_clu_cla_GTN_NSHE_datasets
 from utils.results_recording_local import record_experiment_locally
 
 
@@ -37,8 +35,8 @@ def run_pipeline(args_, experiment_name_: str = ''):
         output, metadata_ids, metadata_labels, metadata_types, dataset, epochs_num, metrics = train_nshe(args_)
     elif args_.model == 'MAGNN':
         output, metadata_ids, metadata_labels, metadata_types, dataset, epochs_num, metrics = train_magnn(args_)
-    # elif args_.model == 'HAN':
-    #     output, metadata = train_han(args_)
+    elif args_.model == 'HeGAN':
+        output, metadata_ids, metadata_labels, metadata_types, dataset, epochs_num, metrics = train_hegan(args_)
     else:
         raise NotImplementedError("No implementation for model name: ", args_.model)
 

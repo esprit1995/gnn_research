@@ -1,9 +1,10 @@
 import torch
 import numpy as np
 import pandas as pd
-from models import RGCN, GTN, NSHE, MAGNN
+
+from models import RGCN, GTN, NSHE, MAGNN, HeGAN
 from data_transforms import GTN_for_rgcn, GTN_for_gtn, NSHE_for_rgcn, NSHE_for_gtn, GTN_or_NSHE_for_nshe, \
-    GTN_NSHE_for_MAGNN
+    GTN_NSHE_for_MAGNN, GTN_NSHE_for_HeGAN
 from utils.tools import heterogeneous_negative_sampling_naive, IMDB_DBLP_ACM_metapath_instance_sampler, \
     label_dict_to_metadata
 from utils.losses import triplet_loss_pure, push_pull_metapath_instance_loss
@@ -289,7 +290,7 @@ def train_nshe(args):
         if (epoch + 1) % args.downstream_eval_freq == 0 or epoch == 0:
             print('--> evaluating downstream tasks...')
             epoch_num.append(epoch + 1)
-            nmi, ari, microf1, macrof1 = evaluate_clu_cla_GTN_NSHE_datasets(dataset=ds, embeddings=output,
+            nmi, ari, microf1, macrof1 = evaluate_clu_cla_GTN_NSHE_datasets(dataset=g.ds, embeddings=output,
                                                                             verbose=False)
             metrics['nmi'].append(nmi)
             metrics['ari'].append(ari)
@@ -328,8 +329,10 @@ def train_magnn(args):
     # #######################
     # ---> get necessary data structures
     if args.from_paper in ['NSHE', 'GTN']:
+        data_directory = '/home/ubuntu/msandal_code/PyG_playground/data/IMDB_ACM_DBLP' if args.from_paper == 'GTN' \
+            else '/home/ubuntu/msandal_code/PyG_playground/data/NSHE'
         graph_statistics, type_mask, node_labels, node_order, ntype_features, posi_edges, node_mptype_mpinstances, \
-        node_label_dict, id_type_mask, edge_index, ds = GTN_NSHE_for_MAGNN(args)
+        node_label_dict, id_type_mask, edge_index, ds = GTN_NSHE_for_MAGNN(args, data_dir=data_directory)
     else:
         raise ValueError('MAGNN cannot be trained on datasets from paper: ' + str(args.from_paper))
 
@@ -422,3 +425,75 @@ def train_magnn(args):
 
     all_ids, all_labels = label_dict_to_metadata(node_label_dict)
     return output, all_ids, all_labels, id_type_mask, ds, epoch_num, metrics
+
+
+def train_hegan(args):
+    # HeGAN settings ##########
+    batch_size = 512
+    lambda_gen = 1e-5
+    lambda_dis = 1e-5
+    n_sample = 16
+    lr_gen = 0.0001  # 1e-3
+    lr_dis = 0.0001  # 1e-4
+    n_epoch = args.epochs
+    saves_step = 10
+    sig = 1.0
+    d_epoch = 15
+    g_epoch = 5
+    hidden_dim = 128
+    model_params = {'batch_size': batch_size, 'lambda_gen': lambda_gen, 'lambda_dis': lambda_dis,
+                    'n_sample': n_sample, 'lr_gen': lr_gen, 'lr_dis': lr_dis,
+                    'n_epoch': n_epoch, 'saves_step': saves_step, 'sig': sig,
+                    'd_epoch': d_epoch, 'g_epoch': g_epoch, 'hidden_dim': hidden_dim}
+    coclustering_metapaths_dict = {'ACM': [('0', '1', '0', '2'), ('2', '0', '1')],
+                                   'DBLP': [('0', '1', '2'), ('0', '1', '0'), ('1', '2', '1')]}
+    corruption_positions_dict = {'ACM': [(1, 2), (2, 2)],
+                                 'DBLP': [(1, 1), (1, 2), (2, 2)]}
+    setattr(args, 'model_params', model_params)
+    # #######################
+    # ---> get necessary data structures
+    if args.from_paper in ['NSHE', 'GTN']:
+        data_directory = '/home/ubuntu/msandal_code/PyG_playground/data/IMDB_ACM_DBLP' if args.from_paper == 'GTN' \
+            else '/home/ubuntu/msandal_code/PyG_playground/data/NSHE'
+        config, node_label_dict, id_type_mask, edge_index, ds = GTN_NSHE_for_HeGAN(args=args,
+                                                                                   data_dir=data_directory,
+                                                                                   model_params=model_params)
+    else:
+        raise ValueError('HeGAN cannot be trained on datasets from paper: ' + str(args.from_paper))
+
+    # ---> additional co-clustering loss data structures
+    if args.cocluster_loss:
+        pos_instances = dict()
+        neg_instances = dict()
+
+        try:
+            metapath_templates, corruption_positions = coclustering_metapaths_dict[args.dataset], \
+                                                       corruption_positions_dict[
+                                                           args.dataset]
+        except Exception as e:
+            raise ValueError('co-clustering loss is not supported for dataset name ' + str(args.dataset))
+
+        for mptemplate_idx in range(len(metapath_templates)):
+            pos_instances[metapath_templates[mptemplate_idx]], \
+            neg_instances[metapath_templates[mptemplate_idx]] = IMDB_DBLP_ACM_metapath_instance_sampler(
+                dataset=ds,
+                metapath=metapath_templates[mptemplate_idx],
+                n=args.instances_per_template,
+                corruption_method=args.corruption_method,
+                corruption_position=corruption_positions[mptemplate_idx])
+    else:
+        pos_instances = None
+        neg_instances = None
+        corruption_positions = None
+
+    ccl_loss_structures = {'pos_instances': pos_instances,
+                           'neg_instances': neg_instances,
+                           'corruption_positions': corruption_positions,
+                           'coclustering_metapaths_dict': coclustering_metapaths_dict,
+                           'corruption_positions_dict': corruption_positions_dict}
+    model = HeGAN(args, config, ds, ccl_loss_structures)
+    model.train()
+    print('HeGAN trained')
+    output = torch.tensor(model.output_embs_dis)
+    all_ids, all_labels = label_dict_to_metadata(node_label_dict)
+    return output, all_ids, all_labels, id_type_mask, ds, model.epoch_num, model.metrics
