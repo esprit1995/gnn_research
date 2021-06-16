@@ -564,8 +564,10 @@ def GTN_NSHE_for_HeGAN(args, data_dir: str = '/home/ubuntu/msandal_code/PyG_play
     # create corresponding entries in the config object
     path_to_files, graph_filename, pretrain_filename = PyG_to_HeGAN_files(str(name).lower(),
                                                                           str(args.from_paper).lower(),
+                                                                          args.acm_dblp_from_gtn_initial_embs,
                                                                           root,
-                                                                          hegan_personal_storage)
+                                                                          hegan_personal_storage,
+                                                                          dataset)
     setattr(config, 'graph_filename', os.path.join(path_to_files, graph_filename))
     setattr(config, 'pretrain_node_emb_filename_d', os.path.join(path_to_files, pretrain_filename))
     setattr(config, 'pretrain_node_emb_filename_g', os.path.join(path_to_files, pretrain_filename))
@@ -588,14 +590,16 @@ def GTN_NSHE_for_HeGAN(args, data_dir: str = '/home/ubuntu/msandal_code/PyG_play
     return config, node_labels_dict, id_type_mask, edge_index, dataset
 
 
-def PyG_to_HeGAN_files(ds_name, ds_paper, pyg_root, save_to):
+def PyG_to_HeGAN_files(ds_name, ds_paper, init_embs, pyg_root, save_to, dataset=None):
     """
 
     :param ds:
     :param ds_name:
     :param ds_paper:
+    :param init_embs:
     :param pyg_root:
     :param save_to:
+    :param dataset:
     :return:
     """
     path_to_files = os.path.join(save_to, '_'.join([ds_name.lower(), ds_paper.lower()]))
@@ -604,7 +608,9 @@ def PyG_to_HeGAN_files(ds_name, ds_paper, pyg_root, save_to):
     NSHE_or_GTN_dataset_for_HeGAN(name=ds_name.lower(),
                                   from_paper=ds_paper.lower(),
                                   root=pyg_root,
-                                  output_dir=path_to_files)
+                                  output_dir=path_to_files,
+                                  initial_embs=init_embs,
+                                  ds_=dataset)
     graph_filename = ds_name.lower() + '_' + ds_paper.lower() + '_triple.dat'
     pretrain_filename = ds_name.lower() + '_' + ds_paper.lower() + '_pre_train.emb'
     return path_to_files, graph_filename, pretrain_filename

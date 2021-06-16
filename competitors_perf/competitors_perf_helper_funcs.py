@@ -126,23 +126,30 @@ def GTN_datasets_for_NSHE_prepa(root='/home/ubuntu/msandal_code/PyG_playground/d
 def NSHE_or_GTN_dataset_for_HeGAN(root='/home/ubuntu/msandal_code/PyG_playground/data/NSHE',
                                   name='dblp',
                                   from_paper='nshe',
-                                  output_dir='/home/ubuntu/msandal_code/PyG_playground/competitors_perf/input_for_competitors'):
+                                  output_dir='/home/ubuntu/msandal_code/PyG_playground/competitors_perf/input_for_competitors',
+                                  initial_embs='original',
+                                  ds_=None):
     """
     helper function to prepare datasets from NSHE or GTN papers for embedding by HeGAN
     :param root: where to find/download NSHE dataset in question
     :param name: which dataset to fetch. must be one of ['dblp', 'imdb', 'acm']
     :param from_paper: from which paper to take the datasets. must be either 'nshe' or 'gtn'
     :param output_dir: where to save the resulting edge list
+    :param initial_embs: which initial node embeddings to use for datasets from the GTN-paper
+    :param ds_: it is also possible to just pass a dataset directly.
     :return:
     """
-    assert str(from_paper).lower() in ['nshe', 'gtn'], \
-        'NSHE_or_GTN_dataset_for_HeGAN(): invalid paper'
-    assert str(name).lower() in ['dblp', 'acm', 'imdb'], \
-        'NSHE_or_GTN_dataset_for_HeGAN(): invalid dataset name required'
-    if from_paper.lower() == 'nshe':
-        ds = DBLP_ACM_IMDB_from_NSHE(root=root, name=str(name).lower())[0]
+    if ds_ is None:
+        assert str(from_paper).lower() in ['nshe', 'gtn'], \
+            'NSHE_or_GTN_dataset_for_HeGAN(): invalid paper'
+        assert str(name).lower() in ['dblp', 'acm', 'imdb'], \
+            'NSHE_or_GTN_dataset_for_HeGAN(): invalid dataset name required'
+        if from_paper.lower() == 'nshe':
+            ds = DBLP_ACM_IMDB_from_NSHE(root=root, name=str(name).lower())[0]
+        else:
+            ds = IMDB_ACM_DBLP_from_GTN(root=root, name=str(name).upper(), initial_embs=initial_embs)[0]
     else:
-        ds = IMDB_ACM_DBLP_from_GTN(root=root, name=str(name).upper())[0]
+        ds = ds_
     edge_types = list(ds['edge_index_dict'].keys())
     edge_types_to_int = {edge_types[i]: i for i in range(len(edge_types))}
 

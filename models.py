@@ -598,7 +598,7 @@ class HeGAN:
             one_epoch_gen_loss = 0
             one_epoch_dis_loss = 0
             print('epoch ' + str(epoch))
-            if (epoch + 1) % self.args.downstream_eval_freq == 0 or epoch == 0:
+            if (epoch + 1) % self.args.downstream_eval_freq == 0 and epoch != 0:
                 print('--> evaluating downstream tasks...')
                 embedding_matrix = self.sess.run(self.discriminator.node_embedding_matrix)
                 self.epoch_num.append(epoch + 1)
