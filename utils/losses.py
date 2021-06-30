@@ -209,3 +209,8 @@ def push_pull_metapath_instance_loss_tf(pos_instances: list, corrupted_instances
     # print(out_n.eval(session=tf.compat.v1.Session()).reshape(-1))
 
     return tf.reduce_mean(-out_p) - tf.reduce_mean(out_n)
+
+
+def NSHE_network_schema_loss(predict, ns_label):
+    BCE_loss = torch.nn.BCELoss()
+    return BCE_loss(predict, ns_label)

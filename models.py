@@ -177,7 +177,7 @@ class NS_MLP_Classifier(nn.Module):
     def forward(self, input):
         ns_x = F.relu(self.hidden_layer(input))
         ns_y = self.output_layer(ns_x)
-        ns_y = F.sigmoid(ns_y).flatten()
+        ns_y = torch.sigmoid(ns_y).flatten()
         return ns_y
 
 
@@ -243,9 +243,43 @@ class NSHE(nn.Module):
         if self.norm_emb:
             # Independently normalize each dimension
             com_emb = F.normalize(com_emb, p=2, dim=1)
-
-        return com_emb
-
+        #
+        # * =============== NSI Embedding Classification ================
+        if self.cla_method == 'TypeSpecCla':
+            # Type Specific Encoder
+            context_emb = torch.FloatTensor(torch.zeros(com_emb.shape[0], self.context_dim))  # .cuda()
+            ns_y = torch.FloatTensor([-1] * len(nsi_list))  # .cuda()
+            for t in self.types:
+                context_emb[self.t_info[t]['ind']] = self.non_linear(
+                    self.nsi_encoder[t](com_emb[self.t_info[t]['ind']]))  # Get NSI Embedding
+            # Type Specific Classifier
+            for t in self.types:
+                nsi_index = nsi_list[nsi_list['target_type'] == t].index.tolist()
+                # node_list generation
+                nsi_node_list = {}
+                for ct in self.types:
+                    nsi_node_list[ct] = list(nsi_list[ct][nsi_index])
+                # Context embedding generation
+                context_combined = torch.cat(
+                    [context_emb[nsi_node_list[ct]] for ct in self.types if ct != t], dim=1)
+                # NSI Embedding generation: concat context and target embs
+                ns_xt = torch.cat([context_combined, com_emb[nsi_node_list[t]]], dim=1)
+                if self.cla_layers == 1:
+                    ns_y[nsi_index] = F.sigmoid(self.ns_classifier[t](ns_xt)).flatten()
+                else:
+                    ns_y[nsi_index] = self.ns_classifier[t](ns_xt)
+        else:
+            ns_ins_emb = [com_emb[nsi_list[t]] for t in self.types]
+            if self.ns_emb_mode == 'Concat':
+                ns_x = torch.cat(ns_ins_emb, dim=1)
+            elif self.ns_emb_mode == 'TypeLvAtt':
+                # gen ns_embedding via type attention
+                ns_ins_emb = torch.stack(ns_ins_emb, dim=1)
+                ns_x, weight = self.type_attention_layer(ns_ins_emb)
+            # predict ns_instance labels
+            if self.cla_method == '2layer':
+                ns_y = self.ns_classifier(ns_x)
+        return com_emb, ns_y
 
 # ###############################################
 #  Metapath Aggregating Graph Neural Network (MAGNN)
@@ -405,8 +439,9 @@ class Generator:
 
 
 class Discriminator:
-    def __init__(self, n_node, n_relation, node_emd_init, relation_emd_init, config,
+    def __init__(self, n_node, n_relation, node_emd_init, relation_emd_init, config, cocluster_lambda,
                  hidden_dim=-1, pos_instances=None, neg_instances=None, corruption_pos=None):
+        self.cocluster_lambda = cocluster_lambda
         self.n_node = n_node
         self.n_relation = n_relation
         self.node_emd_init = node_emd_init
@@ -489,7 +524,7 @@ class Discriminator:
         else:
             mptemplates = list(pos_instances.keys())
             for idx in range(len(mptemplates)):
-                self.cocluster_loss = config.cocluster_lambda * push_pull_metapath_instance_loss_tf(
+                self.cocluster_loss = self.cocluster_lambda * push_pull_metapath_instance_loss_tf(
                     pos_instances[mptemplates[idx]],
                     neg_instances[mptemplates[idx]],
                     corruption_pos[idx],
@@ -501,6 +536,7 @@ class Discriminator:
 
 class HeGAN:
     def __init__(self, args, config, ds, ccl_loss_structures):
+        tf.set_random_seed(69)
         self.args = args
         self.config_hegan = config
         self.ds = ds
@@ -544,7 +580,7 @@ class HeGAN:
         # === preparations for the coclustering loss: start
         # ----------------------------------
         self.build_generator()
-        self.build_discriminator(pos_instances, neg_instances, corruption_positions)
+        self.build_discriminator(pos_instances, neg_instances, corruption_positions, args.type_lambda)
 
         self.saver = tf.train.Saver()
 
@@ -581,7 +617,7 @@ class HeGAN:
                                    hidden_dim=self.config_hegan.hidden_dim,
                                    config=self.config_hegan)
 
-    def build_discriminator(self, pos_instances=None, neg_instances=None, corruption_pos=None):
+    def build_discriminator(self, pos_instances=None, neg_instances=None, corruption_pos=None, cocluster_lambda=0.1):
         self.discriminator = Discriminator(n_node=self.n_node,
                                            n_relation=self.n_relation,
                                            node_emd_init=self.node_embed_init_d,
@@ -590,6 +626,7 @@ class HeGAN:
                                            pos_instances=pos_instances,
                                            neg_instances=neg_instances,
                                            corruption_pos=corruption_pos,
+                                           cocluster_lambda=cocluster_lambda,
                                            config=self.config_hegan)
 
     def train(self):

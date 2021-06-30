@@ -7,7 +7,7 @@ from data_transforms import GTN_for_rgcn, GTN_for_gtn, NSHE_for_rgcn, NSHE_for_g
     GTN_NSHE_for_MAGNN, GTN_NSHE_for_HeGAN
 from utils.tools import heterogeneous_negative_sampling_naive, IMDB_DBLP_ACM_metapath_instance_sampler, \
     label_dict_to_metadata
-from utils.losses import triplet_loss_pure, push_pull_metapath_instance_loss
+from utils.losses import triplet_loss_pure, push_pull_metapath_instance_loss, NSHE_network_schema_loss
 from downstream_tasks.evaluation_funcs import evaluate_clu_cla_GTN_NSHE_datasets
 from utils.MAGNN_utils import nega_sampling, Batcher, prepare_minibatch
 
@@ -212,15 +212,19 @@ def train_nshe(args):
 
     # NSHE settings ##########
     hp = Hyperparameters()
+    optim_beta = {'acm': 33.115,
+                  'dblp': 0.905,
+                  'imdb':0.05}
     hp.conv_method = 'GCNx1'
     hp.cla_layers = 2
     hp.ns_emb_mode = 'TypeSpecCla'
     hp.cla_method = 'TypeSpecCla'
     hp.norm_emb_flag = True
     hp.size = {'com_feat_dim': 128, 'emb_dim': 128}
+    hp.beta = optim_beta[str(args.dataset).lower()]
     model_params = {'conv_method': hp.conv_method, 'cla_layers': hp.cla_layers,
                     'ns_emb_mode': hp.ns_emb_mode, 'cla_method': hp.cla_method,
-                    'norm_emb_flag': hp.norm_emb_flag, 'size': hp.size}
+                    'norm_emb_flag': hp.norm_emb_flag, 'size': hp.size, 'beta': hp.beta}
     coclustering_metapaths_dict = {'ACM': [('0', '1', '0', '2'), ('2', '0', '1')],
                                    'DBLP': [('0', '1', '2'), ('0', '1', '0'), ('1', '2', '1')]}
     corruption_positions_dict = {'ACM': [(1, 2), (2, 2)],
@@ -273,11 +277,16 @@ def train_nshe(args):
     for epoch in range(args.epochs):
         model.zero_grad()
         g.get_epoch_samples(epoch, args)
-        output = model(g.adj, g.feature, g.ns_instances)
+        output, schema_preds = model(g.adj, g.feature, g.ns_instances)
         triplets = heterogeneous_negative_sampling_naive(g.edge_index, g.id_type_mask)
-        # regular loss: triplet loss
+        # regular loss: pairwise proximity loss. We use our loss, but it is very similar to the one
+        # used in the original paper
         loss = triplet_loss_pure(triplets, output) if args.base_triplet_loss else 0
-        # additional co-clustering losses
+
+        # network schema-preserving loss (multiplied by a coeff taken from the original paper)
+        loss = loss + hp.beta * NSHE_network_schema_loss(schema_preds, g.ns_label)
+
+        # additional co-clustering loss
         if args.cocluster_loss:
             mptemplates = list(pos_instances.keys())
             for idx in range(len(mptemplates)):

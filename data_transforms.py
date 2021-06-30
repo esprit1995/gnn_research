@@ -10,7 +10,7 @@ from competitors_perf.competitors_perf_helper_funcs import NSHE_or_GTN_dataset_f
 from datasets import IMDB_ACM_DBLP_from_GTN, DBLP_ACM_IMDB_from_NSHE
 from utils.tools import node_type_encoding
 from utils.tools import normalize_adj, sparse_mx_to_torch_sparse_tensor
-from utils.NSHE_sampler import gen_neg_edges, gen_ns_instances
+from utils.NSHE_utils import gen_neg_edges, gen_ns_instances
 from utils.MAGNN_utils import read_data
 
 
