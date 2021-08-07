@@ -8,7 +8,7 @@ import warnings
 from termcolor import cprint
 from pathlib import Path
 
-AVAILABLE_MODELS = ['RGCN', 'NSHE', 'GTN', 'MAGNN']
+AVAILABLE_MODELS = ['RGCN', 'NSHE', 'GTN', 'MAGNN', 'HeGAN']
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--experiments_path', type=str, default=os.path.join(os.getcwd(), 'experiment_records'),
@@ -42,7 +42,7 @@ def collect_model_results(model_name: str,
             raise ValueError(
                 'collect_model_results(): if dataset is specified, then "from_paper" arg must also be specified')
         ds_name = str(dataset) + '_from_' + str(from_paper)
-    model = 'Model_' + str(model_name).upper()
+    model = 'Model_' + str(model_name)
     cprint('---> collecting experimental results for model ' + str(model_name),
            color='cyan')
     if ds_name is not None:

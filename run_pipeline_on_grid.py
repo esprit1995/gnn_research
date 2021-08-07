@@ -8,26 +8,29 @@ from sklearn.model_selection import ParameterGrid
 MODEL_EVAL_FREQ = {"RGCN": 5,
                    "GTN": 2,
                    "NSHE": 2,
-                   "MAGNN": 1}
-MODEL_MAX_EPOCHS = {'RGCN': 50,
+                   "MAGNN": 1,
+                   "HeGAN": 1}
+MODEL_MAX_EPOCHS = {'RGCN': 500,
                     'GTN': 30,
                     "NSHE": 70,
-                    "MAGNN": 15}
-PAPER_DATASET = {"GTN": ['DBLP'],
+                    "MAGNN": 15,
+                    "HeGAN": 15}
+
+PAPER_DATASET = {"GTN": ['DBLP', 'ACM'],
                  "NSHE": ['DBLP', 'ACM']}
 
-EXP_NAME_SPECIAL_NOTES = 'test_new_metrics'
+EXP_NAME_SPECIAL_NOTES = 'latest_exp'
 
 # ##########################################
 # ##########################################
 
-PAPERS_TO_RUN = ["NSHE"]
-MODELS_TO_RUN = ["RGCN"]
+PAPERS_TO_RUN = ["NSHE", "GTN"]
+MODELS_TO_RUN = ["RGCN", "GTN", "HeGAN", "NSHE", "MAGNN"]
 
 
 #  arguments that affect runs WITH COCLUSTER_LOSS=TRUE
 ALTERABLE_ARGS = {'corruption_method': ['random', 'crossover'],
-                  'type_lambda': [0.1],
+                  'type_lambda': [0.1, 1, 10, 100],
                   'acm_dblp_from_gtn_initial_embs': ['deepwalk', 'original']}
 
 
@@ -63,7 +66,7 @@ if __name__ == '__main__':
     for model in MODELS_TO_RUN:
         for from_paper in PAPERS_TO_RUN:
             setattr(args, 'from_paper', from_paper)
-            setattr(args, 'redownload_data', False)
+            setattr(args, 'redownload_data', True)
             setattr(args, 'base_triplet_loss', True)
             setattr(args, 'model', model)
             setattr(args, 'epochs', MODEL_MAX_EPOCHS[model])

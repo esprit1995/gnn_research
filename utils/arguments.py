@@ -13,7 +13,7 @@ def model_run_argparse():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, default='ACM',
                         help='which dataset to use. available: any of [ACM, DBLP, IMDB]. Default=ACM')
-    parser.add_argument('--from_paper', type=str, default='NSHE',
+    parser.add_argument('--from_paper', type=str, default='GTN',
                         help='from which paper to take the dataset version. Available: [HAN for ACM, NSHE or GTN for IMDB, DBLP, ACM]')
     parser.add_argument('--acm_dblp_from_gtn_initial_embs', type=str, default='original',
                         help='which initial embeddings to use for ACM and DBLP from GTN. one of ["original", "deepwalk"]')
@@ -23,7 +23,7 @@ def model_run_argparse():
                         help='which model to use. available: any of [RGCN, GTN, NSHE, MAGNN]. Default=RGCN')
     parser.add_argument('--epochs', type=int, default=100,
                         help='number of epochs to train. Default 100')
-    parser.add_argument('--downstream_eval_freq', type=int, default=10,
+    parser.add_argument('--downstream_eval_freq', type=int, default=3,
                         help='how frequently (in epochs) to evaluate downstream tasks.')
     parser.add_argument('--random_seed', type=int, default=10,
                         help='reproducibility: seed for random generators. Default 10')
