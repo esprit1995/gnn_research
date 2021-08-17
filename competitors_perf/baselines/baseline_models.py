@@ -1,9 +1,12 @@
 import torch
+import os
+import numpy as np
 
+from datasets import IMDB_ACM_DBLP_from_GTN, DBLP_ACM_IMDB_from_NSHE
 from torch_geometric.nn import MetaPath2Vec
 from competitors_perf.baselines.baseline_data_transforms import metapath2vec_BDT
 from downstream_tasks.evaluation_funcs import evaluate_clu_cla_GTN_NSHE_datasets
-
+from utils.tools import ESim_parse_embeddings
 from tqdm import tqdm
 from termcolor import cprint
 
@@ -70,3 +73,44 @@ def train_metapath2vec(args,
         print('Epoch ' + str(epoch + 1) + ' loss: ' + str(total_loss / len(loader)))
     model.eval()
     return epoch_num, metrics
+
+
+def evaluate_ESim_embeddings(emb_path='/home/ubuntu/msandal_code/PyG_playground/competitors_perf/competitor_embeddings'):
+    """
+    runs evaluation on ready node embeddings produced by ESim model
+    (https://github.com/shangjingbo1226/ESim)
+    :param emb_path: path to where the embeddings are stored
+    :return:
+    """
+    datasets_to_evaluate = ['acm_gtn', 'acm_nshe', 'dblp_gtn', 'dblp_nshe']
+    res_dict = {}
+    for dataset in datasets_to_evaluate:
+        filename = 'vec_' + dataset + '.txt'
+        embeddings = np.fromfile(os.path.join(emb_path, filename), sep=' ')
+
+        if dataset.split('_')[1] == 'gtn':
+            name = str(dataset.split('_')[0]).upper()
+            root = '/home/ubuntu/msandal_code/PyG_playground/data/IMDB_ACM_DBLP/' + name
+            ds = IMDB_ACM_DBLP_from_GTN(root=root,
+                                        name=name,
+                                        initial_embs='original',
+                                        redownload=False)[0]
+            n_nodes = ds['node_type_mask'].shape[0]
+        elif dataset.split('_')[1] == 'nshe':
+            name = str(dataset.split('_')[0]).lower()
+            root = '/home/ubuntu/msandal_code/PyG_playground/data/NSHE/' + name
+            ds = DBLP_ACM_IMDB_from_NSHE(root=root,
+                                         name=name,
+                                         redownload=False)[0]
+            n_nodes = ds['node_type_mask'].shape[0]
+        else:
+            raise ValueError('ESim eval: unexpected dataset to evaluate')
+        embeddings = embeddings.reshape((n_nodes, -1)) # reshape into matrix
+        embeddings = embeddings[np.argsort(embeddings[:, 0])] # sort in ascending order by node id (first column)
+        embeddings = embeddings[:, :1] # drop node ids
+        nmi, ari, microf1, macrof1 = evaluate_clu_cla_GTN_NSHE_datasets(dataset=ds,
+                                                                        embeddings=embeddings,
+                                                                        verbose=False)
+        res_dict[dataset] = {'nmi': nmi, 'ari': ari, 'microf1': microf1, 'macrof1': macrof1}
+    return res_dict
+

@@ -13,7 +13,7 @@ def model_run_argparse():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, default='ACM',
                         help='which dataset to use. available: any of [ACM, DBLP, IMDB]. Default=ACM')
-    parser.add_argument('--from_paper', type=str, default='GTN',
+    parser.add_argument('--from_paper', type=str, default='NSHE',
                         help='from which paper to take the dataset version. Available: [HAN for ACM, NSHE or GTN for IMDB, DBLP, ACM]')
     parser.add_argument('--acm_dblp_from_gtn_initial_embs', type=str, default='original',
                         help='which initial embeddings to use for ACM and DBLP from GTN. one of ["original", "deepwalk"]')

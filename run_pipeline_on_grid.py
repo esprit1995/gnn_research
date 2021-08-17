@@ -5,6 +5,23 @@ from run_pipeline import run_pipeline
 from utils.arguments import model_run_argparse
 from sklearn.model_selection import ParameterGrid
 
+
+# ***************##########################################
+#  Experimental settings
+# ##########################################***************
+
+# these ones have been used in the results currently presented in the thesis
+# COCLUSTERING_METAPATHS = {'ACM': [('0', '1', '0', '2'), ('2', '0', '1')],
+#                           'DBLP': [('0', '1', '2'), ('0', '1', '0'), ('1', '2', '1')]}
+# CORRUPTION_POSITIONS = {'ACM': [(1, 2), (2, 2)],
+#                         'DBLP': [(1, 1), (1, 2), (2, 2)]}
+
+# trying to get a difference between corruption methods to be more apparent.
+# COCLUSTERING_METAPATHS = {'ACM': [('1', '0', '2', '0', '1')],
+#                           'DBLP': [('0', '1', '2', '1', '0')]}
+# CORRUPTION_POSITIONS = {'ACM': [(1, 3)],
+#                         'DBLP': [(2, 4)]}
+
 MODEL_EVAL_FREQ = {"RGCN": 5,
                    "GTN": 2,
                    "NSHE": 2,
@@ -19,19 +36,19 @@ MODEL_MAX_EPOCHS = {'RGCN': 500,
 PAPER_DATASET = {"GTN": ['DBLP', 'ACM'],
                  "NSHE": ['DBLP', 'ACM']}
 
-EXP_NAME_SPECIAL_NOTES = 'latest_exp'
+EXP_NAME_SPECIAL_NOTES = 'mixed_paths'
 
 # ##########################################
 # ##########################################
 
 PAPERS_TO_RUN = ["NSHE", "GTN"]
-MODELS_TO_RUN = ["RGCN", "GTN", "HeGAN", "NSHE", "MAGNN"]
+MODELS_TO_RUN = ["RGCN", "GTN", "HeGAN", "NSHE"]
 
 
 #  arguments that affect runs WITH COCLUSTER_LOSS=TRUE
 ALTERABLE_ARGS = {'corruption_method': ['random', 'crossover'],
-                  'type_lambda': [0.1, 1, 10, 100],
-                  'acm_dblp_from_gtn_initial_embs': ['deepwalk', 'original']}
+                  'type_lambda': [1],
+                  'acm_dblp_from_gtn_initial_embs': ['deepwalk']}
 
 
 def create_experiment_name(args_, special_notes: str = '') -> str:

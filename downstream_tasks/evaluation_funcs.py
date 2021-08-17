@@ -24,3 +24,6 @@ def evaluate_clu_cla_GTN_NSHE_datasets(dataset, embeddings, verbose: bool = True
                                                labels_test=id_label_classification_test[:, 1],
                                                verbose=verbose)
     return NMI, ARI, microF1, macroF1
+
+
+#def evaluate_link_prediction_GTN_NSHE_datasets(dataset, embeddings, )

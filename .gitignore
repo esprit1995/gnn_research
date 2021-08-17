@@ -15,7 +15,7 @@ runs/*
 # data
 *data/*
 dblp/*
-experiment_records/*
+experiment*
 html_viz/*
 temp_exps_copy/*
 # miscellaneous

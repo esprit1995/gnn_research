@@ -2,12 +2,14 @@ import datetime
 import torch
 import numpy as np
 import multiprocessing as mp
+from tqdm import tqdm
 from torch_geometric.typing import Adj
 import scipy.sparse as sp
 from sklearn.preprocessing import OneHotEncoder
 
 from typing import Dict, Tuple, Any
-
+import struct
+import math
 
 def heterogeneous_negative_sampling_naive(edge_index: Adj,
                                           node_idx_type: torch.Tensor) -> tuple:
@@ -346,6 +348,7 @@ def label_dict_to_metadata(label_dict: dict):
         ids_labels = np.vstack([ids_labels, label_dict[all_keys[idx]]])
     return ids_labels[:, 0], ids_labels[:, 1]
 
+
 # ----------------- helper funcs for NSHE
 def normalize_adj(mx):
     """Row-normalize sparse matrix"""
@@ -368,3 +371,67 @@ def sparse_mx_to_torch_sparse_tensor(sparse_mx):
     values = torch.from_numpy(sparse_mx.data)
     shape = torch.Size(sparse_mx.shape)
     return torch.sparse.FloatTensor(indices, values, shape)
+
+
+def ESim_parse_embeddings(file):
+    """
+    parse a binary file produced by the ESim tool
+    :param file: file object
+    :return: dictionary containing node information, total number of bytes read
+    """
+    offset = 0
+    nnodes, emb_dim, offset = get_nnodes_embdim(file, offset)
+    emb_dict = {'node_name': list(),
+                'node_type': list(),
+                'node_emb': list()}
+
+    for _ in tqdm(range(nnodes)):
+        node_name, node_type, offset = get_node_name_and_type(file, offset)
+        node_emb, offset = get_embs_from_binary(file, emb_dim, offset)
+        node_emb = [elem if not math.isnan(elem) else 0 for elem in node_emb]
+        normalizer = math.sqrt(sum([x*x for x in node_emb]))
+        if normalizer == 0:
+            raise ValueError('ESim node embedding reader: normalizer is not supposed to be 0!')
+        node_emb = [elem/normalizer for elem in node_emb]
+        emb_dict['node_name'].append(node_name)
+        emb_dict['node_type'].append(node_type)
+        emb_dict['node_emb'].append(node_emb)
+    return emb_dict, offset
+
+
+def get_nnodes_embdim(f, offset):
+    f.seek(offset)
+    line = f.readline()
+    length = len(line)
+    line = str(line.decode()).strip()
+    elements = line.split(' ')
+    return int(elements[0]), int(elements[1]), offset + length
+
+
+def get_node_name_and_type(f, offset):
+    f.seek(offset)
+    ba = bytearray(f.read())
+    res = ''
+    shift = 0
+    while True:
+        next_char = struct.unpack('c', ba[shift:shift + 1])[0].decode()
+        shift += 1
+        if next_char == ' ':
+            break
+        else:
+            res = res + next_char
+    type = struct.unpack('c', ba[shift:shift + 1])[0]
+    shift += 1
+    return res, type, shift + offset
+
+
+def get_embs_from_binary(file, dim, offset):
+    file.seek(offset)
+    ba = file.read()
+    res = list()
+    shift = 0
+    for i in range(dim):
+        feat = struct.unpack('f', ba[4 * shift:4 * shift + 4])[0]
+        res.append(feat)
+        shift += 1
+    return res, shift * 4 + offset

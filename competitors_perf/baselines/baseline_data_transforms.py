@@ -1,5 +1,6 @@
 from datasets import *
 
+
 def edge_index_dict_individual_ids(edge_index_dict: dict, node_type_mask: torch.tensor):
     """
     make ids of each type start with 0
@@ -8,7 +9,8 @@ def edge_index_dict_individual_ids(edge_index_dict: dict, node_type_mask: torch.
                            node_types are expected to be ascendingly sorted (e.g. [0, ..., 0, 1, ..., 1, 2, ...])
     :return: transformed edge_index_dict
     """
-    nnodes_dict = {str(val.item()): len([elem for elem in node_type_mask if elem == val]) for val in node_type_mask.unique()}
+    nnodes_dict = {str(val.item()): len([elem for elem in node_type_mask if elem == val]) for val in
+                   node_type_mask.unique()}
     nnodes_list = [nnodes_dict[key] for key in list(nnodes_dict.keys())]
 
     offsets_dict = {'0': 0}
@@ -76,3 +78,82 @@ def metapath2vec_BDT(args):
         raise NotImplementedError('metapath2vec_BDT: unknown dataset requested: ' + str(args.dataset))
 
     return edge_index_dict, ds, metapath
+
+
+def dataprep_esim(args):
+    """
+    since ESim (https://github.com/shangjingbo1226/ESim) is a C-based tool,
+    here we just generate data structures that are required to create node embeddings
+    :param args: experiment arguments
+    :return: None
+    """
+    DATASETS = ['DBLP', 'ACM']
+    PAPERS = ['GTN', 'NSHE']
+
+    node_type_int2char = {'ACM': {'0': 'p',
+                                  '1': 'a',
+                                  '2': 's'},
+                          'DBLP': {'0': 'a',
+                                   '1': 'p',
+                                   '2': 'c'}}
+    metapaths = {'DBLP': ['apcpa'], 'ACM': ['apspa']}
+    metapath_priorities = {'DBLP': [1], 'ACM': [1]}
+
+    for dataset in DATASETS:
+        setattr(args, 'dataset', dataset)
+        for paper in PAPERS:
+            cprint('Preparing dataset ' + dataset + ' from ' + paper + ' for analysis by ESim',
+                   color='cyan')
+            setattr(args, 'from_paper', paper)
+            ESim_data = '/home/ubuntu/msandal_code/PyG_playground/competitors_perf/baselines/ESim_data'
+            ESim_data_folder = os.path.join(ESim_data,
+                                            str(args.dataset).lower() + '_' + str(args.from_paper).lower())
+            if not os.path.exists(ESim_data_folder):
+                Path(ESim_data_folder).mkdir(parents=True, exist_ok=True)
+
+            if args.from_paper == 'GTN':
+                name = str(args.dataset).upper()
+                root = '/home/ubuntu/msandal_code/PyG_playground/data/IMDB_ACM_DBLP/' + name
+                ds = IMDB_ACM_DBLP_from_GTN(root=root,
+                                            name=name,
+                                            initial_embs=args.acm_dblp_from_gtn_initial_embs,
+                                            redownload=args.redownload_data)[0]
+            elif args.from_paper == 'NSHE':
+                name = str(args.dataset).lower()
+                root = '/home/ubuntu/msandal_code/PyG_playground/data/NSHE/' + name
+                ds = DBLP_ACM_IMDB_from_NSHE(root=root,
+                                             name=name,
+                                             redownload=args.redownload_data)[0]
+            else:
+                raise NotImplementedError('dataprep_esim: unknown paper requested')
+
+            # node file
+            node_df = pd.DataFrame({'node_id': list(range(ds['node_type_mask'].shape[0])),
+                                    'node_type_int': ds['node_type_mask'].tolist()})
+            node_df['node_id'] = node_df['node_id'].apply(lambda x: str(x))
+            node_df['node_type_string'] = node_df['node_type_int'].apply(
+                lambda x: node_type_int2char[str(args.dataset).upper()][str(x)])
+            node_df = node_df[['node_id', 'node_type_string']]
+            node_df.to_csv(os.path.join(ESim_data_folder, 'node.dat'),
+                           sep=' ',
+                           header=False,
+                           index=False)
+
+            # link file
+            stacked_edges = torch.vstack([ds['edge_index_dict'][key].T for key in list(ds['edge_index_dict'].keys())]).numpy()
+            link_df = pd.DataFrame(data=stacked_edges, columns=['source_node', 'target_node'])
+            for col in link_df.columns:
+                link_df[col] = link_df[col].apply(lambda x: str(x))
+            link_df.to_csv(os.path.join(ESim_data_folder, 'link.dat'),
+                           sep=' ',
+                           header=False,
+                           index=False)
+
+            # path file
+            path_df = pd.DataFrame({'metapath': metapaths[str(args.dataset).upper()],
+                                    'weight': metapath_priorities[str(args.dataset).upper()]})
+            path_df['weight'] = path_df['weight'].apply(lambda x: float(x))
+            path_df.to_csv(os.path.join(ESim_data_folder, 'path.dat'),
+                           sep=' ',
+                           header=False,
+                           index=False)

@@ -16,7 +16,7 @@ parser.add_argument('--experiments_path', type=str, default=os.path.join(os.getc
 
 parser.add_argument('--save_to', type=str, default=os.path.join(os.getcwd(), 'data', 'comparative_excels'),
                     help='directory to save the results to')
-parser.add_argument('--save_filename', type=str, default='aggregated_excel.xlsx',
+parser.add_argument('--save_filename', type=str, default='aggregated_excel2.xlsx',
                     help='name under which the file will be saved')
 
 

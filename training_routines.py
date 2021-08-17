@@ -11,16 +11,32 @@ from utils.losses import triplet_loss_pure, push_pull_metapath_instance_loss, NS
 from downstream_tasks.evaluation_funcs import evaluate_clu_cla_GTN_NSHE_datasets
 from utils.MAGNN_utils import nega_sampling, Batcher, prepare_minibatch
 
+# a collection of shorter metapaths
+# COCLUSTERING_METAPATHS = {'ACM': [('0', '1', '0', '2'), ('2', '0', '1')],
+#                           'DBLP': [('0', '1', '2'), ('0', '1', '0'), ('1', '2', '1')]}
+# CORRUPTION_POSITIONS = {'ACM': [(1, 2), (2, 2)],
+#                         'DBLP': [(1, 1), (1, 2), (2, 2)]}
+
+# single long metapath
+# COCLUSTERING_METAPATHS = {'ACM': [('1', '0', '2', '0', '1')],
+#                           'DBLP': [('0', '1', '2', '1', '0')]}
+# CORRUPTION_POSITIONS = {'ACM': [(1, 3)],
+#                         'DBLP': [(2, 4)]}
+
+# mix of the above
+COCLUSTERING_METAPATHS = {'ACM': [('0', '1', '0', '2'), ('2', '0', '1'), ('1', '0', '2', '0', '1')],
+                          'DBLP': [('0', '1', '2'), ('0', '1', '0'), ('1', '2', '1'), ('0', '1', '2', '1', '0')]}
+CORRUPTION_POSITIONS = {'ACM': [(1, 2), (2, 2), (1, 3)],
+                        'DBLP': [(1, 1), (1, 2), (2, 2), (2, 4)]}
+
 
 def train_rgcn(args):
     # RGCN settings ##########
     output_dim = 64
     hidden_dim = 64
     num_layers = 2
-    coclustering_metapaths_dict = {'ACM': [('0', '1', '0', '2'), ('2', '0', '1')],
-                                   'DBLP': [('0', '1', '2'), ('0', '1', '0'), ('1', '2', '1')]}
-    corruption_positions_dict = {'ACM': [(1, 2), (2, 2)],
-                                 'DBLP': [(1, 1), (1, 2), (2, 2)]}
+    coclustering_metapaths_dict = COCLUSTERING_METAPATHS
+    corruption_positions_dict = CORRUPTION_POSITIONS
     # #######################
 
     # ========> preparing data: wrangling, sampling
@@ -117,10 +133,8 @@ def train_gtn(args):
     norm = 'true'
     model_params = {'node_dim': node_dim, 'num_channels': num_channels,
                     'num_layers': num_layers, 'norm': norm}
-    coclustering_metapaths_dict = {'ACM': [('0', '1', '0', '2'), ('2', '0', '1')],
-                                   'DBLP': [('0', '1', '2'), ('0', '1', '0'), ('1', '2', '1')]}
-    corruption_positions_dict = {'ACM': [(1, 2), (2, 2)],
-                                 'DBLP': [(1, 1), (1, 2), (2, 2)]}
+    coclustering_metapaths_dict = COCLUSTERING_METAPATHS
+    corruption_positions_dict = CORRUPTION_POSITIONS
     setattr(args, 'model_params', model_params)
     # #######################
     # ---> get necessary data structures
@@ -225,10 +239,8 @@ def train_nshe(args):
     model_params = {'conv_method': hp.conv_method, 'cla_layers': hp.cla_layers,
                     'ns_emb_mode': hp.ns_emb_mode, 'cla_method': hp.cla_method,
                     'norm_emb_flag': hp.norm_emb_flag, 'size': hp.size, 'beta': hp.beta}
-    coclustering_metapaths_dict = {'ACM': [('0', '1', '0', '2'), ('2', '0', '1')],
-                                   'DBLP': [('0', '1', '2'), ('0', '1', '0'), ('1', '2', '1')]}
-    corruption_positions_dict = {'ACM': [(1, 2), (2, 2)],
-                                 'DBLP': [(1, 1), (1, 2), (2, 2)]}
+    coclustering_metapaths_dict = COCLUSTERING_METAPATHS
+    corruption_positions_dict = CORRUPTION_POSITIONS
     setattr(args, 'model_params', model_params)
     # #######################
     # ---> get necessary data structures
@@ -331,10 +343,8 @@ def train_magnn(args):
                     'rtype': rtype, 'sampling': sampling}
     setattr(args, 'model_params', model_params)
 
-    coclustering_metapaths_dict = {'ACM': [('0', '1', '0', '2'), ('2', '0', '1')],
-                                   'DBLP': [('0', '1', '2'), ('0', '1', '0'), ('1', '2', '1')]}
-    corruption_positions_dict = {'ACM': [(1, 2), (2, 2)],
-                                 'DBLP': [(1, 1), (1, 2), (2, 2)]}
+    coclustering_metapaths_dict = COCLUSTERING_METAPATHS
+    corruption_positions_dict = CORRUPTION_POSITIONS
     # #######################
     # ---> get necessary data structures
     if args.from_paper in ['NSHE', 'GTN']:
@@ -454,10 +464,8 @@ def train_hegan(args):
                     'n_sample': n_sample, 'lr_gen': lr_gen, 'lr_dis': lr_dis,
                     'n_epoch': n_epoch, 'saves_step': saves_step, 'sig': sig,
                     'd_epoch': d_epoch, 'g_epoch': g_epoch, 'hidden_dim': hidden_dim}
-    coclustering_metapaths_dict = {'ACM': [('0', '1', '0', '2'), ('2', '0', '1')],
-                                   'DBLP': [('0', '1', '2'), ('0', '1', '0'), ('1', '2', '1')]}
-    corruption_positions_dict = {'ACM': [(1, 2), (2, 2)],
-                                 'DBLP': [(1, 1), (1, 2), (2, 2)]}
+    coclustering_metapaths_dict = COCLUSTERING_METAPATHS
+    corruption_positions_dict = CORRUPTION_POSITIONS
     setattr(args, 'model_params', model_params)
     # #######################
     # ---> get necessary data structures
