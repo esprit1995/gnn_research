@@ -11,6 +11,7 @@ from typing import Dict, Tuple, Any
 import struct
 import math
 
+
 def heterogeneous_negative_sampling_naive(edge_index: Adj,
                                           node_idx_type: torch.Tensor) -> tuple:
     """
@@ -125,7 +126,21 @@ def make_step(current: int, adj_dict) -> int:
         raise e
 
 
-def sample_instance(metapath_, adj_dicts_, starting_points_, random_seed) -> tuple:
+def sample_metapath_instance(metapath_: tuple,
+                             adj_dicts_: dict,
+                             starting_points_: np.array,
+                             random_seed: int = 69,
+                             stepping_method=make_step, ) -> tuple:
+    """
+    sample an instance for a given metapath template
+    :param metapath_: metapath template. For instance, if available node types are
+                      'A', 'P', 'C', it could be ('A', 'P', 'A')
+    :param stepping_method: function to make random steps withing adjacency dictionaries
+    :param adj_dicts_: adjacency dictionaries between different node types
+    :param starting_points_: possible starting points, ndarray containing node ids.
+    :param random_seed:
+    :return:
+    """
     metapath_instance = list()
     np.random.seed(random_seed)
     metapath_current = np.random.choice(starting_points_)
@@ -133,7 +148,7 @@ def sample_instance(metapath_, adj_dicts_, starting_points_, random_seed) -> tup
     for nstep in range(1, len(metapath_)):
         edge_type = (metapath_[nstep - 1], metapath_[nstep])
         try:
-            metapath_current = make_step(metapath_current, adj_dicts_[edge_type])
+            metapath_current = stepping_method(metapath_current, adj_dicts_[edge_type])
         except Exception as e:
             print('Sampling process failed due to exception: ' + str(e))
             raise e
@@ -179,15 +194,16 @@ def sample_metapath_instances(metapath: Tuple, n: int, pyg_graph_info: Any,
     # instance sampling
     if parallel:
         pool = mp.Pool(processes=nworkers)
-        results = [pool.apply_async(sample_instance, args=(metapath, adj_dicts, starting_points, i)) for i in range(n)]
+        results = [pool.apply_async(sample_metapath_instance, args=(metapath, adj_dicts, starting_points, i)) for i in
+                   range(n)]
         mp_instances = [p.get() for p in results]
         return list(set(mp_instances))
     else:
         results = list()
         for i in range(n):
-            instance = sample_instance(metapath, adj_dicts, starting_points, i)
+            instance = sample_metapath_instance(metapath, adj_dicts, starting_points, i)
             if instance is not None:
-                results.append(sample_instance(metapath, adj_dicts, starting_points, i))
+                results.append(sample_metapath_instance(metapath, adj_dicts, starting_points, i))
         return list(set(results))
 
 
@@ -288,48 +304,98 @@ def IMDB_DBLP_ACM_metapath_instance_sampler(dataset, metapath: Tuple, n: int,
 # ############################################################
 # ############################################################
 
+# ############################################################
+# #####  Graphlet-sampling: general graphlets          #######
+# ############################################################
 
-class EarlyStopping(object):
+# # example of a graphlet definition: for DBLP graphlet
+#                     A
+#                     |
+#               A  -  P  -  A
+#                     |
+#                     C
+# # we define its template like so:
+# new_graphlet = {'main': ['A', 'P', 'A'], ---> __longest__ linear component is the main lane
+#                 'sub_paths':  {
+#                            1: [['P', 'A'], ['P', 'C']]
+#                            }}
+#                            |
+#                at mane lane index 1, i.e. at node 'P', 2 sub-lanes start: 'PA' and 'PC'
+# sampled graphlets will be keep ids, as, in our example:
+# new_graphlet_sample = {'main': [100, 101, 4],
+#                        'sub_paths': {
+#                               1: [[101, 200], [101, 10]]
+#                               }}
+
+def make_step_dictupdate(current: int, adj_dict):
     """
-    credits: DGL oficial github examples at
-    https://github.com/dmlc/dgl/blob/master/examples/pytorch/han/utils.py
+    given the current node and an adjacency dictionary, makes a step towards a random
+    adjacent node; returns its id, updates the adjacency dictionary to remove the used edge
+    if no node can be chosen, returns -1
+    :param current:
+    :param adj_dict:
+    :return:
     """
-
-    def __init__(self, patience=10):
-        dt = datetime.datetime.now()
-        self.filename = 'early_stop_{}_{:02d}-{:02d}-{:02d}.pth'.format(
-            dt.date(), dt.hour, dt.minute, dt.second)
-        self.patience = patience
-        self.counter = 0
-        self.best_acc = None
-        self.best_loss = None
-        self.early_stop = False
-
-    def step(self, loss, acc, model):
-        if self.best_loss is None:
-            self.best_acc = acc
-            self.best_loss = loss
-            self.save_checkpoint(model)
-        elif (loss > self.best_loss) and (acc < self.best_acc):
-            self.counter += 1
-            print(f'EarlyStopping counter: {self.counter} out of {self.patience}')
-            if self.counter >= self.patience:
-                self.early_stop = True
+    try:
+        if adj_dict[str(int(current))].size > 0:
+            chosen_node = np.random.choice(adj_dict[str(current)])
+            adj_dict[str(int(current))] = adj_dict[str(int(current))][adj_dict[str(int(current))] != chosen_node]
+            return chosen_node
         else:
-            if (loss <= self.best_loss) and (acc >= self.best_acc):
-                self.save_checkpoint(model)
-            self.best_loss = np.min((loss, self.best_loss))
-            self.best_acc = np.max((acc, self.best_acc))
-            self.counter = 0
-        return self.early_stop
+            return -1
+    except Exception as e:
+        raise e
 
-    def save_checkpoint(self, model):
-        """Saves model when validation loss decreases."""
-        torch.save(model.state_dict(), self.filename)
 
-    def load_checkpoint(self, model):
-        """Load the latest checkpoint."""
-        model.load_state_dict(torch.load(self.filename))
+# def get_node_ids_from_graphlet(graphlet_instance: dict) -> list:
+#     """
+#     returns all the node ids that are present in the graphlet
+#     :param graphlet_instance: dictionary containing a graphlet instance (can be incomplete)
+#     :return: list of node ids
+#     """
+#     if not graphlet_instance['main']:
+#         return []
+#     else:
+#         all_ids = graphlet_instance['main']
+#         if graphlet_instance['sub_paths']:
+#             for key in list(graphlet_instance['sub_paths'].keys()):
+#                 all_ids = all_ids + [elem for sublist in graphlet_instance['sub_paths'][key] for elem in sublist]
+#         return list(set(all_ids))
+
+def sample_graphlet_instance(graphlet_template: dict,
+                             adj_dicts,
+                             starting_points,
+                             random_seed):
+    """
+    sample a graphlet instance for a given template
+    :param graphlet_template: graphlet template as described above
+    :param adj_dicts: adjacency dictionaries between different node types
+    :param starting_points: where to start the main lane of the graphlet
+    :param random_seed: reproducibility
+    :return:
+    """
+    adj_dicts_copy = adj_dicts.copy()
+    graphlet_instance = dict()
+    # sample the main lane using metapath sampling function
+    graphlet_instance['main'] = sample_metapath_instance(metapath_=tuple(graphlet_template['main']),
+                                                         adj_dicts_=adj_dicts_copy,
+                                                         starting_points_=starting_points,
+                                                         random_seed=random_seed,
+                                                         stepping_method=make_step_dictupdate)
+
+    # sample sub paths
+    graphlet_instance['sub_paths'] = dict()
+    for mainlane_start_indx in list(graphlet_template['sub_paths'].keys()):
+        subpath_instances = []
+        for metapath_template in graphlet_template['sub_paths'][mainlane_start_indx]:
+            subpath_instances.append(sample_metapath_instance(metapath_=tuple(metapath_template),
+                                                              adj_dicts_=adj_dicts_copy,
+                                                              starting_points_=starting_points,
+                                                              random_seed=random_seed,
+                                                              stepping_method=make_step_dictupdate))
+        graphlet_instance['sub_paths'][mainlane_start_indx] = subpath_instances
+    del(adj_dicts_copy)
+    return graphlet_instance
 
 
 # ############################################################
@@ -371,67 +437,3 @@ def sparse_mx_to_torch_sparse_tensor(sparse_mx):
     values = torch.from_numpy(sparse_mx.data)
     shape = torch.Size(sparse_mx.shape)
     return torch.sparse.FloatTensor(indices, values, shape)
-
-
-def ESim_parse_embeddings(file):
-    """
-    parse a binary file produced by the ESim tool
-    :param file: file object
-    :return: dictionary containing node information, total number of bytes read
-    """
-    offset = 0
-    nnodes, emb_dim, offset = get_nnodes_embdim(file, offset)
-    emb_dict = {'node_name': list(),
-                'node_type': list(),
-                'node_emb': list()}
-
-    for _ in tqdm(range(nnodes)):
-        node_name, node_type, offset = get_node_name_and_type(file, offset)
-        node_emb, offset = get_embs_from_binary(file, emb_dim, offset)
-        node_emb = [elem if not math.isnan(elem) else 0 for elem in node_emb]
-        normalizer = math.sqrt(sum([x*x for x in node_emb]))
-        if normalizer == 0:
-            raise ValueError('ESim node embedding reader: normalizer is not supposed to be 0!')
-        node_emb = [elem/normalizer for elem in node_emb]
-        emb_dict['node_name'].append(node_name)
-        emb_dict['node_type'].append(node_type)
-        emb_dict['node_emb'].append(node_emb)
-    return emb_dict, offset
-
-
-def get_nnodes_embdim(f, offset):
-    f.seek(offset)
-    line = f.readline()
-    length = len(line)
-    line = str(line.decode()).strip()
-    elements = line.split(' ')
-    return int(elements[0]), int(elements[1]), offset + length
-
-
-def get_node_name_and_type(f, offset):
-    f.seek(offset)
-    ba = bytearray(f.read())
-    res = ''
-    shift = 0
-    while True:
-        next_char = struct.unpack('c', ba[shift:shift + 1])[0].decode()
-        shift += 1
-        if next_char == ' ':
-            break
-        else:
-            res = res + next_char
-    type = struct.unpack('c', ba[shift:shift + 1])[0]
-    shift += 1
-    return res, type, shift + offset
-
-
-def get_embs_from_binary(file, dim, offset):
-    file.seek(offset)
-    ba = file.read()
-    res = list()
-    shift = 0
-    for i in range(dim):
-        feat = struct.unpack('f', ba[4 * shift:4 * shift + 4])[0]
-        res.append(feat)
-        shift += 1
-    return res, shift * 4 + offset
