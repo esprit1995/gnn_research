@@ -8,8 +8,8 @@ import scipy.sparse as sp
 from sklearn.preprocessing import OneHotEncoder
 
 from typing import Dict, Tuple, Any
-import struct
-import math
+from termcolor import cprint
+from functools import partial
 
 
 def heterogeneous_negative_sampling_naive(edge_index: Adj,
@@ -165,7 +165,7 @@ def sample_metapath_instances(metapath: Tuple, n: int, pyg_graph_info: Any,
     sample a predefined number of metapath instances in a given graph
     :param metapath: a tuple describing a metapath. For instance, ('0', '1', '2', '1', '0')
     :param n: how many instances to randomly sample from a graph
-    :param pyg_graph_info: variable containing at least 'edge_index_dictionary', 'node_type_mask'
+    :param pyg_graph_info: variable containing at least 'edge_index_dict', 'node_type_mask'
     :param nworkers: parallel processing param
     :param parallel: whether to use parallel processing
     :param negative_samples: whether to sample positive or negative instances
@@ -325,21 +325,26 @@ def IMDB_DBLP_ACM_metapath_instance_sampler(dataset, metapath: Tuple, n: int,
 # new_graphlet_sample = {'main': [100, 101, 4],
 #                        'sub_paths': {
 #                               1: [[101, 200], [101, 10]]
-#                               }}
+#                               },
+#                        'node_ids_present': [100, 101, 4, 200, 10] ---> indicates which nodes are used in this instance}
 
-def make_step_dictupdate(current: int, adj_dict):
+def make_step_restricted(current: int, adj_dict__: dict, to_avoid: list):
     """
-    given the current node and an adjacency dictionary, makes a step towards a random
-    adjacent node; returns its id, updates the adjacency dictionary to remove the used edge
-    if no node can be chosen, returns -1
-    :param current:
-    :param adj_dict:
+    makes metapath-sampling step while avoiding node ids listed in to_avoid
+    :param current: id of the node metapath is currently at
+    :param adj_dict__: adjacency dictionary
+    :param to_avoid: list of node ids to avoid
     :return:
     """
     try:
-        if adj_dict[str(int(current))].size > 0:
-            chosen_node = np.random.choice(adj_dict[str(current)])
-            adj_dict[str(int(current))] = adj_dict[str(int(current))][adj_dict[str(int(current))] != chosen_node]
+        if adj_dict__[str(int(current))].size > 0:
+            chosen_node = np.random.choice(adj_dict__[str(current)])
+            attempts = 0
+            while chosen_node in to_avoid:
+                chosen_node = np.random.choice(adj_dict__[str(current)])
+                attempts += 1
+                if attempts > 20:
+                    return -1
             return chosen_node
         else:
             return -1
@@ -347,25 +352,10 @@ def make_step_dictupdate(current: int, adj_dict):
         raise e
 
 
-# def get_node_ids_from_graphlet(graphlet_instance: dict) -> list:
-#     """
-#     returns all the node ids that are present in the graphlet
-#     :param graphlet_instance: dictionary containing a graphlet instance (can be incomplete)
-#     :return: list of node ids
-#     """
-#     if not graphlet_instance['main']:
-#         return []
-#     else:
-#         all_ids = graphlet_instance['main']
-#         if graphlet_instance['sub_paths']:
-#             for key in list(graphlet_instance['sub_paths'].keys()):
-#                 all_ids = all_ids + [elem for sublist in graphlet_instance['sub_paths'][key] for elem in sublist]
-#         return list(set(all_ids))
-
 def sample_graphlet_instance(graphlet_template: dict,
                              adj_dicts,
                              starting_points,
-                             random_seed):
+                             random_seed: int = 69):
     """
     sample a graphlet instance for a given template
     :param graphlet_template: graphlet template as described above
@@ -374,28 +364,81 @@ def sample_graphlet_instance(graphlet_template: dict,
     :param random_seed: reproducibility
     :return:
     """
-    adj_dicts_copy = adj_dicts.copy()
+    # adj_dicts_copy = deepcopy(adj_dicts)
     graphlet_instance = dict()
     # sample the main lane using metapath sampling function
-    graphlet_instance['main'] = sample_metapath_instance(metapath_=tuple(graphlet_template['main']),
-                                                         adj_dicts_=adj_dicts_copy,
-                                                         starting_points_=starting_points,
-                                                         random_seed=random_seed,
-                                                         stepping_method=make_step_dictupdate)
-
+    graphlet_instance['main'] = list(sample_metapath_instance(metapath_=tuple(graphlet_template['main']),
+                                                              adj_dicts_=adj_dicts,
+                                                              starting_points_=starting_points,
+                                                              random_seed=random_seed,
+                                                              stepping_method=make_step))
+    graphlet_instance['node_ids_present'] = [] + graphlet_instance['main']
     # sample sub paths
     graphlet_instance['sub_paths'] = dict()
     for mainlane_start_indx in list(graphlet_template['sub_paths'].keys()):
         subpath_instances = []
         for metapath_template in graphlet_template['sub_paths'][mainlane_start_indx]:
-            subpath_instances.append(sample_metapath_instance(metapath_=tuple(metapath_template),
-                                                              adj_dicts_=adj_dicts_copy,
-                                                              starting_points_=starting_points,
-                                                              random_seed=random_seed,
-                                                              stepping_method=make_step_dictupdate))
+            sub_path = sample_metapath_instance(metapath_=tuple(metapath_template),
+                                                adj_dicts_=adj_dicts,
+                                                starting_points_=np.array(
+                                                    [graphlet_instance['main'][int(mainlane_start_indx)]]),
+                                                random_seed=random_seed,
+                                                stepping_method=partial(make_step_restricted,
+                                                                        to_avoid=graphlet_instance[
+                                                                            'node_ids_present']))
+            if sub_path is None:
+                return None
+            subpath_instances.append(list(sub_path))
+            graphlet_instance['node_ids_present'] = list(graphlet_instance['node_ids_present'] + subpath_instances[-1])
         graphlet_instance['sub_paths'][mainlane_start_indx] = subpath_instances
-    del(adj_dicts_copy)
     return graphlet_instance
+
+
+def remove_duplicate_graphlets(graphlet_list):
+    node_lists = [graphlet['node_ids_present'] for graphlet in graphlet_list]
+    hash_list = [''.join([str(nodelist[i]) for i in range(len(nodelist))]) for nodelist in node_lists]
+
+    # find out which indices to keep
+    encountered = []
+    tokeep_index = []
+    for index, elem in enumerate(hash_list):
+        if elem in encountered:
+            continue
+        else:
+            encountered.append(elem)
+            tokeep_index.append(index)
+    res = [graphlet_list[i] for i in range(len(graphlet_list)) if i in tokeep_index]
+    return res
+
+
+def sample_n_graphlet_instances(graphlet_template: dict, graph_info: Any, n_samples: int = 1):
+    """
+    sample n instances for a given graphlet template
+    :param graphlet_template: template for a graphlet as it is described above
+    :param graph_info: object containing graph information. At least fields 'edge_index_dict' and
+                        'node_type_mask' are required
+    :param n_samples: how many samples to return
+    :return:
+    """
+    np.random.seed(69)
+    # get all possible starting points for the given metapath template
+    starting_node_type = graphlet_template['main'][0]
+    starting_points = np.where(graph_info['node_type_mask'].numpy() == int(starting_node_type))[0]
+
+    # get adjacency dictionaries
+    adj_dicts = dict()
+    possible_edge_types = list(graph_info['edge_index_dict'].keys())
+    for edge_type in possible_edge_types:
+        adj_dicts[edge_type] = edge_index_to_adj_dict(
+            graph_info['edge_index_dict'],
+            graph_info['node_type_mask'],
+            edge_type)
+    results = list()
+    for i in range(n_samples):
+        graphlet_instance = sample_graphlet_instance(graphlet_template, adj_dicts, starting_points, i)
+        if graphlet_instance is not None:
+            results.append(graphlet_instance)
+    return remove_duplicate_graphlets(list(results))
 
 
 # ############################################################

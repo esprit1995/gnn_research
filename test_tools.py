@@ -1,8 +1,12 @@
 import torch
+import numpy as np
+
 import torch.nn.functional as F
+from datasets import DBLP_ACM_IMDB_from_NSHE
 from utils.losses import push_pull_metapath_instance_loss, push_pull_metapath_instance_loss_tf
 from utils.tools import sample_metapath_instances, corrupt_positive_metapath_instance
 from utils.tools import edge_index_to_adj_dict, edge_index_to_neg_adj_dict
+from utils.tools import sample_n_graphlet_instances
 
 import os
 
@@ -166,5 +170,34 @@ def test_tf_pt_loss_correspondence():
     return True
 
 
+def test_sample_graphlet_instances():
+    template = {'main': ['0', '1', '2'],
+                'sub_paths': {
+                    1: [['1', '0']]
+                }}
+    # adj_dicts = {('A', 'P'): {'0': np.array([1]),
+    #                           '5': np.array([1]),
+    #                           '4': np.array([3]),
+    #                           '6': np.array([3]),
+    #                           '7': np.array([3])},
+    #              ('P', 'A'): {'1': np.array([0, 5]),
+    #                           '3': np.array([4, 6, 7])},
+    #              ('P', 'C'): {'1': np.array([2]),
+    #                           '3': np.array([2])},
+    #              ('C', 'P'): {'2': np.array([1,3])}}
+    # starting_points = np.array([0, 4, 5, 6, 7])
+    graph_info = dict()
+    graph_info['node_type_mask'] = torch.tensor([0, 1, 2, 1, 0, 0, 0, 0])
+    graph_info['edge_index_dict'] = {('0', '1'): torch.tensor([[0, 5, 6, 4, 7], [1, 1, 3, 3, 3]]),
+                                     ('1', '0'): torch.tensor([[1, 1, 3, 3, 3], [0, 5, 6, 4, 7]]),
+                                     ('1', '2'): torch.tensor([[1, 3], [2, 2]]),
+                                     ('2', '1'): torch.tensor([[2, 2], [1, 3]])}
+    sampled_graphlets = sample_n_graphlet_instances(template, graph_info, n_samples=20)
+    return sampled_graphlets
+
+
 if __name__ == "__main__":
-    test_push_pull_loss()
+    ds = DBLP_ACM_IMDB_from_NSHE(name='dblp', root='/home/ubuntu/msandal_code/PyG_playground/data/NSHE')[0]
+    graphlet_template = {'main': ['0', '1', '2', '1'], 'sub_paths': {0: [['0', '1', '2']]}}
+    graphlets = sample_n_graphlet_instances(graphlet_template, ds, n_samples=10000)
+    print('done')
