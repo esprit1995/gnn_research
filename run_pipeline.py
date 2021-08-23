@@ -70,7 +70,7 @@ def run_pipeline(args_, experiment_name_: str = ''):
 
 if __name__ == "__main__":
     args = model_run_argparse()
-    special_notes = 'testing_new_recording'
+    special_notes = 'test_linkpred'
     if args.dataset in ['DBLP', 'ACM'] and args.from_paper == 'GTN':
         dataset_name = '_'.join([args.dataset, 'from', args.from_paper, 'initial_embs', args.acm_dblp_from_gtn_initial_embs])
     else:

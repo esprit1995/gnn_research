@@ -8,7 +8,8 @@ from data_transforms import GTN_for_rgcn, GTN_for_gtn, NSHE_for_rgcn, NSHE_for_g
 from utils.tools import heterogeneous_negative_sampling_naive, IMDB_DBLP_ACM_metapath_instance_sampler, \
     label_dict_to_metadata
 from utils.losses import triplet_loss_pure, push_pull_metapath_instance_loss, NSHE_network_schema_loss
-from downstream_tasks.evaluation_funcs import evaluate_clu_cla_GTN_NSHE_datasets
+from downstream_tasks.evaluation_funcs import evaluate_clu_cla_GTN_NSHE_datasets, \
+    evaluate_link_prediction_GTN_NSHE_datasets
 from utils.MAGNN_utils import nega_sampling, Batcher, prepare_minibatch
 
 # a collection of shorter metapaths
@@ -84,7 +85,9 @@ def train_rgcn(args):
     metrics = {'nmi': list(),
                'ari': list(),
                'macrof1': list(),
-               'microf1': list()}
+               'microf1': list(),
+               'roc_auc': list(),
+               'f1': list()}
 
     for epoch in range(args.epochs):
         model = model.float()
@@ -111,11 +114,15 @@ def train_rgcn(args):
         if (epoch + 1) % args.downstream_eval_freq == 0 or epoch == 0:
             print('--> evaluating downstream tasks...')
             epoch_num.append(epoch + 1)
-            nmi, ari, microf1, macrof1 = evaluate_clu_cla_GTN_NSHE_datasets(dataset=ds, embeddings=output, verbose=False)
+            nmi, ari, microf1, macrof1 = evaluate_clu_cla_GTN_NSHE_datasets(dataset=ds, embeddings=output,
+                                                                            verbose=False)
+            roc_auc, f1 = evaluate_link_prediction_GTN_NSHE_datasets(dataset=ds, embeddings=output, verbose=False)
             metrics['nmi'].append(nmi)
             metrics['ari'].append(ari)
             metrics['microf1'].append(microf1)
             metrics['macrof1'].append(macrof1)
+            metrics['roc_auc'].append(roc_auc)
+            metrics['f1'].append(f1)
             print("this epoch's NMI : " + str(nmi))
             print("this epoch's ARI : " + str(ari))
             print('--> done!')
@@ -183,7 +190,9 @@ def train_gtn(args):
     metrics = {'nmi': list(),
                'ari': list(),
                'macrof1': list(),
-               'microf1': list()}
+               'microf1': list(),
+               'roc_auc': list(),
+               'f1': list()}
     output = None
     for epoch in range(args.epochs):
         model.zero_grad()
@@ -206,10 +215,13 @@ def train_gtn(args):
             epoch_num.append(epoch + 1)
             nmi, ari, microf1, macrof1 = evaluate_clu_cla_GTN_NSHE_datasets(dataset=ds, embeddings=output,
                                                                             verbose=False)
+            roc_auc, f1 = evaluate_link_prediction_GTN_NSHE_datasets(dataset=ds, embeddings=output, verbose=False)
             metrics['nmi'].append(nmi)
             metrics['ari'].append(ari)
             metrics['microf1'].append(microf1)
             metrics['macrof1'].append(macrof1)
+            metrics['roc_auc'].append(roc_auc)
+            metrics['f1'].append(f1)
             print("this epoch's NMI : " + str(nmi))
             print("this epoch's ARI : " + str(ari))
             print('--> done!')
@@ -228,7 +240,7 @@ def train_nshe(args):
     hp = Hyperparameters()
     optim_beta = {'acm': 33.115,
                   'dblp': 0.905,
-                  'imdb':0.05}
+                  'imdb': 0.05}
     hp.conv_method = 'GCNx1'
     hp.cla_layers = 2
     hp.ns_emb_mode = 'TypeSpecCla'
@@ -284,7 +296,9 @@ def train_nshe(args):
     metrics = {'nmi': list(),
                'ari': list(),
                'macrof1': list(),
-               'microf1': list()}
+               'microf1': list(),
+               'roc_auc': list(),
+               'f1': list()}
     output = None
     for epoch in range(args.epochs):
         model.zero_grad()
@@ -313,10 +327,13 @@ def train_nshe(args):
             epoch_num.append(epoch + 1)
             nmi, ari, microf1, macrof1 = evaluate_clu_cla_GTN_NSHE_datasets(dataset=g.ds, embeddings=output,
                                                                             verbose=False)
+            roc_auc, f1 = evaluate_link_prediction_GTN_NSHE_datasets(dataset=g.ds, embeddings=output, verbose=False)
             metrics['nmi'].append(nmi)
             metrics['ari'].append(ari)
             metrics['microf1'].append(microf1)
             metrics['macrof1'].append(macrof1)
+            metrics['roc_auc'].append(roc_auc)
+            metrics['f1'].append(f1)
             print("this epoch's NMI : " + str(nmi))
             print("this epoch's ARI : " + str(ari))
             print('--> done!')
@@ -386,7 +403,9 @@ def train_magnn(args):
     metrics = {'nmi': list(),
                'ari': list(),
                'macrof1': list(),
-               'microf1': list()}
+               'microf1': list(),
+               'roc_auc': list(),
+               'f1': list()}
     output = None
     for epoch in range(args.epochs):
         #  batcher code is conserved in for the sake of code re-usage
@@ -408,7 +427,7 @@ def train_magnn(args):
         batch_node_features, _ = model(layer_ntype_mptype_g, layer_ntype_mptype_mpinstances,
                                        layer_ntype_mptype_iftargets, batch_ntype_orders)
         indices = list(batch_node_features.keys())
-        assert all(indices[i] < indices[i+1] for i in range(len(indices)-1)), \
+        assert all(indices[i] < indices[i + 1] for i in range(len(indices) - 1)), \
             "MAGNN: indices are not sorted, aborting."
         output = torch.vstack([batch_node_features[key] for key in list(batch_node_features.keys())])
 
@@ -434,10 +453,13 @@ def train_magnn(args):
             epoch_num.append(epoch + 1)
             nmi, ari, microf1, macrof1 = evaluate_clu_cla_GTN_NSHE_datasets(dataset=ds, embeddings=output,
                                                                             verbose=False)
+            roc_auc, f1 = evaluate_link_prediction_GTN_NSHE_datasets(dataset=ds, embeddings=output, verbose=False)
             metrics['nmi'].append(nmi)
             metrics['ari'].append(ari)
             metrics['microf1'].append(microf1)
             metrics['macrof1'].append(macrof1)
+            metrics['roc_auc'].append(roc_auc)
+            metrics['f1'].append(f1)
             print("this epoch's NMI : " + str(nmi))
             print("this epoch's ARI : " + str(ari))
             print('--> done!')

@@ -6,7 +6,6 @@ from datasets import IMDB_ACM_DBLP_from_GTN, DBLP_ACM_IMDB_from_NSHE
 from torch_geometric.nn import MetaPath2Vec
 from competitors_perf.baselines.baseline_data_transforms import metapath2vec_BDT
 from downstream_tasks.evaluation_funcs import evaluate_clu_cla_GTN_NSHE_datasets
-from utils.tools import ESim_parse_embeddings
 from tqdm import tqdm
 from termcolor import cprint
 
@@ -75,14 +74,16 @@ def train_metapath2vec(args,
     return epoch_num, metrics
 
 
-def evaluate_ESim_embeddings(emb_path='/home/ubuntu/msandal_code/PyG_playground/competitors_perf/competitor_embeddings'):
+def evaluate_ESim_embeddings(emb_path='/home/ubuntu/msandal_code/PyG_playground/competitors_perf/competitor_embeddings',
+                             dataset: str=None):
     """
     runs evaluation on ready node embeddings produced by ESim model
     (https://github.com/shangjingbo1226/ESim)
     :param emb_path: path to where the embeddings are stored
+    :param dataset: name of the dataset to evaluate. format: "DATASET_PAPER"
     :return:
     """
-    datasets_to_evaluate = ['acm_gtn', 'acm_nshe', 'dblp_gtn', 'dblp_nshe']
+    datasets_to_evaluate = ['acm_gtn', 'acm_nshe', 'dblp_gtn', 'dblp_nshe'] if dataset is None else [dataset.lower()]
     res_dict = {}
     for dataset in datasets_to_evaluate:
         filename = 'vec_' + dataset + '.txt'

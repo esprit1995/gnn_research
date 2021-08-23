@@ -2,6 +2,7 @@ import numpy as np
 import torch
 from downstream_tasks.node_classification import evaluate_classification
 from downstream_tasks.node_clustering import evaluate_clustering
+from downstream_tasks.link_prediction import evaluate_link_prediction
 
 
 def evaluate_clu_cla_GTN_NSHE_datasets(dataset, embeddings, verbose: bool = True):
@@ -26,4 +27,11 @@ def evaluate_clu_cla_GTN_NSHE_datasets(dataset, embeddings, verbose: bool = True
     return NMI, ARI, microF1, macroF1
 
 
-#def evaluate_link_prediction_GTN_NSHE_datasets(dataset, embeddings, )
+def evaluate_link_prediction_GTN_NSHE_datasets(dataset, embeddings, verbose: bool = True):
+    if type(embeddings) == type(np.array([0, 0])):
+        embeddings = torch.tensor(embeddings)
+    roc_auc, f1 = evaluate_link_prediction(node_embeddings=embeddings,
+                                           node_type_mask=dataset['node_type_mask'],
+                                           edge_index_dict=dataset['edge_index_dict'],
+                                           verbose=verbose)
+    return roc_auc, f1

@@ -42,16 +42,16 @@ def logreg_link_prediction(train_data: np.array, test_data: np.array,
                            verbose: bool = False):
     warnings.simplefilter('ignore')
     emb_dimension = node_embeddings.shape[1]
-    train = node_embeddings.numpy()[train_data[:, :2]].reshape((-1, 2 * emb_dimension))
-    train_labels = train[:, 2]
-    test = node_embeddings.numpy()[test_data[:, :2]].reshape((-1, 2 * emb_dimension))
-    test_labels = test[:, 2]
+    train = node_embeddings.detach().numpy()[train_data[:, :2].astype(int)].reshape((-1, 2 * emb_dimension))
+    train_labels = train_data[:, 2].astype(int)
+    test = node_embeddings.detach().numpy()[test_data[:, :2].astype(int)].reshape((-1, 2 * emb_dimension))
+    test_labels = test_data[:, 2].astype(int)
 
     classifier = LogisticRegression()
     classifier.fit(train, train_labels)
     test_predictions = classifier.predict(test)
 
-    roc_auc = roc_auc_score(test_labels, test_predictions, average='macro')
+    roc_auc = roc_auc_score(test_labels, test_predictions, average='macro', multi_class='ovo')
     f1 = f1_score(test_labels, test_predictions, average='macro')
     if verbose:
         print()

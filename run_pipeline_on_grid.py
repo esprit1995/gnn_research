@@ -27,26 +27,26 @@ MODEL_EVAL_FREQ = {"RGCN": 5,
                    "NSHE": 2,
                    "MAGNN": 1,
                    "HeGAN": 1}
-MODEL_MAX_EPOCHS = {'RGCN': 500,
-                    'GTN': 30,
-                    "NSHE": 70,
-                    "MAGNN": 15,
-                    "HeGAN": 15}
+MODEL_MAX_EPOCHS = {'RGCN': 100, # 500,
+                    'GTN': 10, # 30,
+                    "NSHE": 10, # 70,
+                    "MAGNN": 10, # 15,
+                    "HeGAN": 8 }# 15}
 
 PAPER_DATASET = {"GTN": ['DBLP', 'ACM'],
                  "NSHE": ['DBLP', 'ACM']}
 
-EXP_NAME_SPECIAL_NOTES = 'mixed_paths'
+EXP_NAME_SPECIAL_NOTES = 'testing_linkpred'
 
 # ##########################################
 # ##########################################
 
-PAPERS_TO_RUN = ["NSHE", "GTN"]
-MODELS_TO_RUN = ["RGCN", "GTN", "HeGAN", "NSHE"]
+PAPERS_TO_RUN = ["NSHE"]
+MODELS_TO_RUN = ["RGCN", "GTN", "HeGAN", "NSHE", 'MAGNN']
 
 
 #  arguments that affect runs WITH COCLUSTER_LOSS=TRUE
-ALTERABLE_ARGS = {'corruption_method': ['random', 'crossover'],
+ALTERABLE_ARGS = {'corruption_method': ['random'],
                   'type_lambda': [1],
                   'acm_dblp_from_gtn_initial_embs': ['deepwalk']}
 

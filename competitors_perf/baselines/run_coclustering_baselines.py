@@ -1,6 +1,6 @@
 import json
 
-from competitors_perf.baselines.baseline_models import train_metapath2vec
+from competitors_perf.baselines.baseline_models import train_metapath2vec, evaluate_ESim_embeddings
 from utils.arguments import model_run_argparse
 
 DATASETS = ['ACM', 'DBLP']
@@ -38,8 +38,15 @@ if __name__ == "__main__":
         setattr(args, 'from_paper', paper)
         for dataset in DATASETS:
             setattr(args, 'dataset', dataset)
+
+            # metapath2vec
             epoch_num, metrics = train_metapath2vec(args)
             baseline_results['metapath2vec_' + str(dataset) + "_" + str(paper)] = pick_best_results(epoch_num, metrics)
+
+            # ESim
+            res_dict = evaluate_ESim_embeddings(dataset=(dataset + "_" + paper).lower())
+            baseline_results['ESim_' + str(dataset) + '_' + str(paper)] = res_dict[list(res_dict.keys())[0]]
+
     outfile = open('baseline_results.json', 'w+')
     json.dump(baseline_results, outfile)
     outfile.close()

@@ -9,7 +9,7 @@ import torch.nn.functional as F
 
 import utils.HeGAN_utils as HeGAN_utils
 
-from downstream_tasks.evaluation_funcs import evaluate_clu_cla_GTN_NSHE_datasets
+from downstream_tasks.evaluation_funcs import evaluate_clu_cla_GTN_NSHE_datasets, evaluate_link_prediction_GTN_NSHE_datasets
 
 from torch_geometric.nn.conv import RGCNConv
 from torch_geometric.typing import OptTensor, Adj
@@ -546,7 +546,9 @@ class HeGAN:
         self.metrics = {'nmi': list(),
                         'ari': list(),
                         'macrof1': list(),
-                        'microf1': list()}
+                        'microf1': list(),
+                        'roc_auc': list(),
+                        'f1': list()}
         self.epoch_num = list()
         self.output_embs_dis = None
 
@@ -641,10 +643,13 @@ class HeGAN:
                 self.epoch_num.append(epoch + 1)
                 nmi, ari, microf1, macrof1 = evaluate_clu_cla_GTN_NSHE_datasets(dataset=self.ds, embeddings=embedding_matrix,
                                                                                 verbose=False)
+                roc_auc, f1 = evaluate_link_prediction_GTN_NSHE_datasets(dataset=self.ds, embeddings=embedding_matrix, verbose=False)
                 self.metrics['nmi'].append(nmi)
                 self.metrics['ari'].append(ari)
                 self.metrics['microf1'].append(microf1)
                 self.metrics['macrof1'].append(macrof1)
+                self.metrics['roc_auc'].append(roc_auc)
+                self.metrics['f1'].append(f1)
                 print("this epoch's NMI : " + str(nmi))
                 print("this epoch's ARI : " + str(ari))
                 print('--> done!')
