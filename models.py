@@ -9,7 +9,8 @@ import torch.nn.functional as F
 
 import utils.HeGAN_utils as HeGAN_utils
 
-from downstream_tasks.evaluation_funcs import evaluate_clu_cla_GTN_NSHE_datasets, evaluate_link_prediction_GTN_NSHE_datasets
+from downstream_tasks.evaluation_funcs import evaluate_clu_cla_GTN_NSHE_datasets, \
+    evaluate_link_prediction_GTN_NSHE_datasets
 
 from torch_geometric.nn.conv import RGCNConv
 from torch_geometric.typing import OptTensor, Adj
@@ -22,6 +23,36 @@ from conv import MAGNN_layer
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 import tensorflow as tf
+
+
+# ###############################################
+#   (Variational) Graph AutoEncoder (VGAE)
+# ###############################################
+
+class VariationalRGCNEncoder(nn.Module):
+    def __init__(self, in_channels, out_channels, num_relations):
+        super(VariationalRGCNEncoder, self).__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.num_relations = num_relations
+        self.conv1 = RGCNConv(in_channels=in_channels,
+                              out_channels=2 * out_channels,
+                              num_relations=self.num_relations,
+                              num_bases=30
+                              )
+        self.conv_mu = RGCNConv(in_channels=2 * out_channels,
+                                out_channels=out_channels,
+                                num_relations=self.num_relations,
+                                num_bases=30)
+        self.conv_logstd = RGCNConv(in_channels=2 * out_channels,
+                                    out_channels=out_channels,
+                                    num_relations=self.num_relations,
+                                    num_bases=30)
+
+    def forward(self, x: Union[OptTensor, Tuple[OptTensor, torch.Tensor]],
+                edge_index: Adj, edge_type: OptTensor = None):
+        x = self.conv1(x, edge_index, edge_type).relu()
+        return self.conv_mu(x, edge_index, edge_type), self.conv_logstd(x, edge_index, edge_type)
 
 
 # ###############################################
@@ -280,6 +311,7 @@ class NSHE(nn.Module):
             if self.cla_method == '2layer':
                 ns_y = self.ns_classifier(ns_x)
         return com_emb, ns_y
+
 
 # ###############################################
 #  Metapath Aggregating Graph Neural Network (MAGNN)
@@ -641,9 +673,11 @@ class HeGAN:
                 print('--> evaluating downstream tasks...')
                 embedding_matrix = self.sess.run(self.discriminator.node_embedding_matrix)
                 self.epoch_num.append(epoch + 1)
-                nmi, ari, microf1, macrof1 = evaluate_clu_cla_GTN_NSHE_datasets(dataset=self.ds, embeddings=embedding_matrix,
+                nmi, ari, microf1, macrof1 = evaluate_clu_cla_GTN_NSHE_datasets(dataset=self.ds,
+                                                                                embeddings=embedding_matrix,
                                                                                 verbose=False)
-                roc_auc, f1 = evaluate_link_prediction_GTN_NSHE_datasets(dataset=self.ds, embeddings=embedding_matrix, verbose=False)
+                roc_auc, f1 = evaluate_link_prediction_GTN_NSHE_datasets(dataset=self.ds, embeddings=embedding_matrix,
+                                                                         verbose=False)
                 self.metrics['nmi'].append(nmi)
                 self.metrics['ari'].append(ari)
                 self.metrics['microf1'].append(microf1)

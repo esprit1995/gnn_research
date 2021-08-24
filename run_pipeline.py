@@ -8,7 +8,7 @@ import tensorboard as tb
 
 from datetime import datetime
 
-from training_routines import train_rgcn, train_gtn, train_nshe, train_magnn, train_hegan
+from training_routines import train_rgcn, train_gtn, train_nshe, train_magnn, train_hegan, train_vgae
 from utils.arguments import model_run_argparse
 from utils.visualization import draw_embeddings
 from torch.utils.tensorboard import SummaryWriter
@@ -37,6 +37,8 @@ def run_pipeline(args_, experiment_name_: str = ''):
         output, metadata_ids, metadata_labels, metadata_types, dataset, epochs_num, metrics = train_magnn(args_)
     elif args_.model == 'HeGAN':
         output, metadata_ids, metadata_labels, metadata_types, dataset, epochs_num, metrics = train_hegan(args_)
+    elif args_.model == 'VGAE':
+        output, metadata_ids, metadata_labels, metadata_types, dataset, epochs_num, metrics = train_vgae(args_)
     else:
         raise NotImplementedError("No implementation for model name: ", args_.model)
 

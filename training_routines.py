@@ -2,7 +2,8 @@ import torch
 import numpy as np
 import pandas as pd
 
-from models import RGCN, GTN, NSHE, MAGNN, HeGAN
+from torch_geometric.nn import VGAE
+from models import RGCN, GTN, NSHE, MAGNN, HeGAN, VariationalRGCNEncoder
 from data_transforms import GTN_for_rgcn, GTN_for_gtn, NSHE_for_rgcn, NSHE_for_gtn, GTN_or_NSHE_for_nshe, \
     GTN_NSHE_for_MAGNN, GTN_NSHE_for_HeGAN
 from utils.tools import heterogeneous_negative_sampling_naive, IMDB_DBLP_ACM_metapath_instance_sampler, \
@@ -128,6 +129,97 @@ def train_rgcn(args):
             print('--> done!')
         if epoch % 5 == 0:
             print("Epoch: ", epoch, " loss: ", loss)
+    all_ids, all_labels = label_dict_to_metadata(node_label_dict)
+    return output, all_ids, all_labels, id_type_mask, ds, epoch_num, metrics
+
+
+def train_vgae(args):
+    # VGAE settings ##########
+    output_dim = 64
+    hidden_dim = 64
+    coclustering_metapaths_dict = COCLUSTERING_METAPATHS
+    corruption_positions_dict = CORRUPTION_POSITIONS
+    # #######################
+    # ========> preparing data: wrangling, sampling
+    if args.from_paper == 'GTN':
+        ds, n_node_dict, node_label_dict, id_type_mask, node_feature_matrix, edge_index, edge_type = GTN_for_rgcn(
+            args.dataset, args)
+    elif args.from_paper == 'NSHE':
+        ds, n_node_dict, node_label_dict, id_type_mask, node_feature_matrix, edge_index, edge_type = NSHE_for_rgcn(
+            name=args.dataset, args=args, data_dir='/home/ubuntu/msandal_code/PyG_playground/data/NSHE')
+    else:
+        raise ValueError(
+            'train_rgcn(): for requested paper ---' + str(args.from_paper) + '--- training RGCN is not possible')
+    # sampling metapath instances for the cocluster push-pull loss
+    if args.cocluster_loss:
+        pos_instances = dict()
+        neg_instances = dict()
+
+        try:
+            metapath_templates, corruption_positions = coclustering_metapaths_dict[args.dataset], \
+                                                       corruption_positions_dict[
+                                                           args.dataset]
+        except Exception as e:
+            raise ValueError('co-clustering loss is not supported for dataset name ' + str(args.dataset))
+
+        for mptemplate_idx in range(len(metapath_templates)):
+            pos_instances[metapath_templates[mptemplate_idx]], \
+            neg_instances[metapath_templates[mptemplate_idx]] = IMDB_DBLP_ACM_metapath_instance_sampler(
+                dataset=ds,
+                metapath=metapath_templates[mptemplate_idx],
+                n=args.instances_per_template,
+                corruption_method=args.corruption_method,
+                corruption_position=corruption_positions[mptemplate_idx])
+    print('Data ready!')
+
+    model = VGAE(VariationalRGCNEncoder(node_feature_matrix.shape[1],
+                                        output_dim,
+                                        num_relations=pd.Series(edge_type.numpy()).nunique()))
+    model.train()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.005, weight_decay=args.weight_decay)
+    # keeping track of performance vs #epochs
+    epoch_num = list()
+    metrics = {'nmi': list(),
+               'ari': list(),
+               'macrof1': list(),
+               'microf1': list(),
+               'roc_auc': list(),
+               'f1': list()}
+    output = None
+    for epoch in range(args.epochs):
+        model.zero_grad()
+        output = model.encode(x=node_feature_matrix.float(),
+                              edge_index=edge_index,
+                              edge_type=edge_type)
+        # regular loss: triplet loss
+        loss = model.recon_loss(output, edge_index) + (1 / id_type_mask.shape[0]) * model.kl_loss()
+        # additional co-clustering losses
+        if args.cocluster_loss:
+            mptemplates = list(pos_instances.keys())
+            for idx in range(len(mptemplates)):
+                loss = loss + args.type_lambda * push_pull_metapath_instance_loss(pos_instances[mptemplates[idx]],
+                                                                                  neg_instances[mptemplates[idx]],
+                                                                                  corruption_positions[idx],
+                                                                                  output)
+        loss.backward()
+        optimizer.step()
+        if (epoch + 1) % args.downstream_eval_freq == 0 or epoch == 0:
+            print('--> evaluating downstream tasks...')
+            epoch_num.append(epoch + 1)
+            nmi, ari, microf1, macrof1 = evaluate_clu_cla_GTN_NSHE_datasets(dataset=ds, embeddings=output,
+                                                                            verbose=False)
+            roc_auc, f1 = evaluate_link_prediction_GTN_NSHE_datasets(dataset=ds, embeddings=output, verbose=False)
+            metrics['nmi'].append(nmi)
+            metrics['ari'].append(ari)
+            metrics['microf1'].append(microf1)
+            metrics['macrof1'].append(macrof1)
+            metrics['roc_auc'].append(roc_auc)
+            metrics['f1'].append(f1)
+            print("this epoch's NMI : " + str(nmi))
+            print("this epoch's ARI : " + str(ari))
+            print('--> done!')
+        print("Epoch: ", epoch, " loss: ", loss)
+
     all_ids, all_labels = label_dict_to_metadata(node_label_dict)
     return output, all_ids, all_labels, id_type_mask, ds, epoch_num, metrics
 
