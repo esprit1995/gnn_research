@@ -6,8 +6,9 @@ from torch_geometric.nn import VGAE
 from models import RGCN, GTN, NSHE, MAGNN, HeGAN, VariationalRGCNEncoder
 from data_transforms import GTN_for_rgcn, GTN_for_gtn, NSHE_for_rgcn, NSHE_for_gtn, GTN_or_NSHE_for_nshe, \
     GTN_NSHE_for_MAGNN, GTN_NSHE_for_HeGAN
-from utils.tools import heterogeneous_negative_sampling_naive, IMDB_DBLP_ACM_metapath_instance_sampler, \
-    label_dict_to_metadata
+
+from utils.tools import heterogeneous_negative_sampling_naive,\
+    label_dict_to_metadata, prepare_metapath_ccl_structures
 from utils.losses import triplet_loss_pure, push_pull_metapath_instance_loss, NSHE_network_schema_loss
 from downstream_tasks.evaluation_funcs import evaluate_clu_cla_GTN_NSHE_datasets, \
     evaluate_link_prediction_GTN_NSHE_datasets
@@ -53,25 +54,14 @@ def train_rgcn(args):
             'train_rgcn(): for requested paper ---' + str(args.from_paper) + '--- training RGCN is not possible')
     # sampling metapath instances for the cocluster push-pull loss
     if args.cocluster_loss:
-        pos_instances = dict()
-        neg_instances = dict()
-
-        try:
-            metapath_templates, corruption_positions = coclustering_metapaths_dict[args.dataset], \
-                                                       corruption_positions_dict[
-                                                           args.dataset]
-        except Exception as e:
-            raise ValueError('co-clustering loss is not supported for dataset name ' + str(args.dataset))
-
-        for mptemplate_idx in range(len(metapath_templates)):
-            pos_instances[metapath_templates[mptemplate_idx]], \
-            neg_instances[metapath_templates[mptemplate_idx]] = IMDB_DBLP_ACM_metapath_instance_sampler(
-                dataset=ds,
-                metapath=metapath_templates[mptemplate_idx],
-                n=args.instances_per_template,
-                corruption_method=args.corruption_method,
-                corruption_position=corruption_positions[mptemplate_idx])
-    print('Data ready!')
+        pos_instances, neg_instances, corruption_positions = prepare_metapath_ccl_structures(args,
+                                                                                             ds,
+                                                                                             coclustering_metapaths_dict,
+                                                                                             corruption_positions_dict)
+    else:
+        pos_instances = None
+        neg_instances = None
+        corruption_positions = None
 
     # ========> training RGCN
     model = RGCN(input_dim=node_feature_matrix.shape[1],
@@ -152,25 +142,15 @@ def train_vgae(args):
             'train_rgcn(): for requested paper ---' + str(args.from_paper) + '--- training RGCN is not possible')
     # sampling metapath instances for the cocluster push-pull loss
     if args.cocluster_loss:
-        pos_instances = dict()
-        neg_instances = dict()
-
-        try:
-            metapath_templates, corruption_positions = coclustering_metapaths_dict[args.dataset], \
-                                                       corruption_positions_dict[
-                                                           args.dataset]
-        except Exception as e:
-            raise ValueError('co-clustering loss is not supported for dataset name ' + str(args.dataset))
-
-        for mptemplate_idx in range(len(metapath_templates)):
-            pos_instances[metapath_templates[mptemplate_idx]], \
-            neg_instances[metapath_templates[mptemplate_idx]] = IMDB_DBLP_ACM_metapath_instance_sampler(
-                dataset=ds,
-                metapath=metapath_templates[mptemplate_idx],
-                n=args.instances_per_template,
-                corruption_method=args.corruption_method,
-                corruption_position=corruption_positions[mptemplate_idx])
-    print('Data ready!')
+        pos_instances, neg_instances, corruption_positions = \
+            prepare_metapath_ccl_structures(args=args,
+                                            ds=ds,
+                                            coclustering_metapaths_dict=coclustering_metapaths_dict,
+                                            corruption_positions_dict=corruption_positions_dict)
+    else:
+        pos_instances = None
+        neg_instances = None
+        corruption_positions = None
 
     model = VGAE(VariationalRGCNEncoder(node_feature_matrix.shape[1],
                                         output_dim,
@@ -247,26 +227,17 @@ def train_gtn(args):
         raise NotImplementedError('GTN cannot be trained on datasets from paper: ' + str(args.from_paper))
     node_features = node_features.float()
     A = A.float()
-    # ---> additional co-clustering loss data structures
+    # sampling metapath instances for the cocluster push-pull loss
     if args.cocluster_loss:
-        pos_instances = dict()
-        neg_instances = dict()
-
-        try:
-            metapath_templates, corruption_positions = coclustering_metapaths_dict[args.dataset], \
-                                                       corruption_positions_dict[
-                                                           args.dataset]
-        except Exception as e:
-            raise ValueError('co-clustering loss is not supported for dataset name ' + str(args.dataset))
-
-        for mptemplate_idx in range(len(metapath_templates)):
-            pos_instances[metapath_templates[mptemplate_idx]], \
-            neg_instances[metapath_templates[mptemplate_idx]] = IMDB_DBLP_ACM_metapath_instance_sampler(
-                dataset=ds,
-                metapath=metapath_templates[mptemplate_idx],
-                n=args.instances_per_template,
-                corruption_method=args.corruption_method,
-                corruption_position=corruption_positions[mptemplate_idx])
+        pos_instances, neg_instances, corruption_positions = \
+            prepare_metapath_ccl_structures(args=args,
+                                            ds=ds,
+                                            coclustering_metapaths_dict=coclustering_metapaths_dict,
+                                            corruption_positions_dict=corruption_positions_dict)
+    else:
+        pos_instances = None
+        neg_instances = None
+        corruption_positions = None
 
     model = GTN(num_edge=A.shape[-1],
                 num_channels=num_channels,
@@ -355,30 +326,17 @@ def train_nshe(args):
     else:
         raise NotImplementedError('NSHE cannot be trained on datasets from paper: ' + str(args.from_paper))
 
-    # ---> additional co-clustering loss data structures
-    pos_instances = None
-    neg_instances = None
+    # sampling metapath instances for the cocluster push-pull loss
     if args.cocluster_loss:
-        pos_instances = dict()
-        neg_instances = dict()
-
-        try:
-            metapath_templates, corruption_positions = coclustering_metapaths_dict[args.dataset], \
-                                                       corruption_positions_dict[
-                                                           args.dataset]
-        except Exception as e:
-            raise ValueError('co-clustering loss is not supported for dataset name ' + str(args.dataset) +
-                             '\n' + str(e))
-
-        for mptemplate_idx in range(len(metapath_templates)):
-            pos_instances[metapath_templates[mptemplate_idx]], \
-            neg_instances[metapath_templates[mptemplate_idx]] = IMDB_DBLP_ACM_metapath_instance_sampler(
-                dataset=g.ds,
-                metapath=metapath_templates[mptemplate_idx],
-                n=args.instances_per_template,
-                corruption_method=args.corruption_method,
-                corruption_position=corruption_positions[mptemplate_idx])
-
+        pos_instances, neg_instances, corruption_positions = \
+            prepare_metapath_ccl_structures(args=args,
+                                            ds=g.ds,
+                                            coclustering_metapaths_dict=coclustering_metapaths_dict,
+                                            corruption_positions_dict=corruption_positions_dict)
+    else:
+        pos_instances = None
+        neg_instances = None
+        corruption_positions = None
     # ---> instantiate model and optimizer
     model = NSHE(g, hp)
     model.train()
@@ -464,26 +422,17 @@ def train_magnn(args):
     else:
         raise ValueError('MAGNN cannot be trained on datasets from paper: ' + str(args.from_paper))
 
-    # ---> additional co-clustering loss data structures
+    # sampling metapath instances for the cocluster push-pull loss
     if args.cocluster_loss:
-        pos_instances = dict()
-        neg_instances = dict()
-
-        try:
-            metapath_templates, corruption_positions = coclustering_metapaths_dict[args.dataset], \
-                                                       corruption_positions_dict[
-                                                           args.dataset]
-        except Exception as e:
-            raise ValueError('co-clustering loss is not supported for dataset name ' + str(args.dataset))
-
-        for mptemplate_idx in range(len(metapath_templates)):
-            pos_instances[metapath_templates[mptemplate_idx]], \
-            neg_instances[metapath_templates[mptemplate_idx]] = IMDB_DBLP_ACM_metapath_instance_sampler(
-                dataset=ds,
-                metapath=metapath_templates[mptemplate_idx],
-                n=args.instances_per_template,
-                corruption_method=args.corruption_method,
-                corruption_position=corruption_positions[mptemplate_idx])
+        pos_instances, neg_instances, corruption_positions = \
+            prepare_metapath_ccl_structures(args=args,
+                                            ds=ds,
+                                            coclustering_metapaths_dict=coclustering_metapaths_dict,
+                                            corruption_positions_dict=corruption_positions_dict)
+    else:
+        pos_instances = None
+        neg_instances = None
+        corruption_positions = None
 
     model = MAGNN(graph_statistics, hdim, adim, dropout, device, nlayer, nhead, nlabel,
                   ntype_features, rtype)
@@ -592,26 +541,13 @@ def train_hegan(args):
     else:
         raise ValueError('HeGAN cannot be trained on datasets from paper: ' + str(args.from_paper))
 
-    # ---> additional co-clustering loss data structures
+    # sampling metapath instances for the cocluster push-pull loss
     if args.cocluster_loss:
-        pos_instances = dict()
-        neg_instances = dict()
-
-        try:
-            metapath_templates, corruption_positions = coclustering_metapaths_dict[args.dataset], \
-                                                       corruption_positions_dict[
-                                                           args.dataset]
-        except Exception as e:
-            raise ValueError('co-clustering loss is not supported for dataset name ' + str(args.dataset))
-
-        for mptemplate_idx in range(len(metapath_templates)):
-            pos_instances[metapath_templates[mptemplate_idx]], \
-            neg_instances[metapath_templates[mptemplate_idx]] = IMDB_DBLP_ACM_metapath_instance_sampler(
-                dataset=ds,
-                metapath=metapath_templates[mptemplate_idx],
-                n=args.instances_per_template,
-                corruption_method=args.corruption_method,
-                corruption_position=corruption_positions[mptemplate_idx])
+        pos_instances, neg_instances, corruption_positions = \
+            prepare_metapath_ccl_structures(args=args,
+                                            ds=ds,
+                                            coclustering_metapaths_dict=coclustering_metapaths_dict,
+                                            corruption_positions_dict=corruption_positions_dict)
     else:
         pos_instances = None
         neg_instances = None

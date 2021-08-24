@@ -445,6 +445,39 @@ def sample_n_graphlet_instances(graphlet_template: dict, graph_info: Any, n_samp
 # ############        Miscellaneous           ################
 # ############################################################
 
+def prepare_metapath_ccl_structures(args,
+                                    ds,
+                                    coclustering_metapaths_dict,
+                                    corruption_positions_dict):
+    """
+    prepare data structures for the metapath-base coclustering loss
+    :param args: experiment run arguments
+    :param ds: dataset being analyzed (PyG instance)
+    :param coclustering_metapaths_dict: metapath templates
+    :param corruption_positions_dict: corruption positions
+    :return: positive instances, negative instances and corruption positions
+    """
+    pos_instances = dict()
+    neg_instances = dict()
+
+    try:
+        metapath_templates, corruption_positions = coclustering_metapaths_dict[args.dataset], \
+                                                   corruption_positions_dict[
+                                                       args.dataset]
+    except Exception as e:
+        raise ValueError('co-clustering loss is not supported for dataset name ' + str(args.dataset))
+
+    for mptemplate_idx in range(len(metapath_templates)):
+        pos_instances[metapath_templates[mptemplate_idx]], \
+        neg_instances[metapath_templates[mptemplate_idx]] = IMDB_DBLP_ACM_metapath_instance_sampler(
+            dataset=ds,
+            metapath=metapath_templates[mptemplate_idx],
+            n=args.instances_per_template,
+            corruption_method=args.corruption_method,
+            corruption_position=corruption_positions[mptemplate_idx])
+    return pos_instances, neg_instances, corruption_positions
+
+
 def label_dict_to_metadata(label_dict: dict):
     """
     dictionary is expected to contain node ids and their labels
