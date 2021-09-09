@@ -128,7 +128,7 @@ def train_rgcn(args):
     return output, all_ids, all_labels, id_type_mask, ds, epoch_num, metrics
 
 
-def train_vgae(args, homogeneous: bool = True):
+def train_vgae(args):
     # VGAE settings ##########
     output_dim = 64
     hidden_dim = 64
@@ -157,7 +157,7 @@ def train_vgae(args, homogeneous: bool = True):
         neg_instances = None
         corruption_positions = None
 
-    if not homogeneous:
+    if not args.homogeneous_VGAE:
         encoder = VariationalRGCNEncoder(node_feature_matrix.shape[1],
                                          output_dim,
                                          num_relations=pd.Series(edge_type.numpy()).nunique())
@@ -168,7 +168,7 @@ def train_vgae(args, homogeneous: bool = True):
     model = VGAE(encoder)
     model.train()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.005, weight_decay=args.weight_decay)
-    
+
     # keeping track of performance vs #epochs
     epoch_num = list()
     metrics = {'nmi': list(),

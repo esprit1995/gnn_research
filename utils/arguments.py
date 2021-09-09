@@ -17,6 +17,8 @@ def model_run_argparse():
                         help='from which paper to take the dataset version. Available: [HAN for ACM, NSHE or GTN for IMDB, DBLP, ACM]')
     parser.add_argument('--acm_dblp_from_gtn_initial_embs', type=str, default='original',
                         help='which initial embeddings to use for ACM and DBLP from GTN. one of ["original", "deepwalk"]')
+    parser.add_argument('--homogeneous_VGAE', type=str2bool, default=True,
+                        help='whether to use GCN or RGCN for VGAE encoder, default = True, i.e. GCN')
     parser.add_argument('--redownload_data', type=str2bool, default=False,
                         help='whether to redownload data in case it is already available')
     parser.add_argument('--model', type=str, default='RGCN',

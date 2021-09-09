@@ -36,19 +36,20 @@ MODEL_MAX_EPOCHS = {'RGCN': 100, # 500,
 PAPER_DATASET = {"GTN": ['DBLP', 'ACM'],
                  "NSHE": ['DBLP', 'ACM']}
 
-EXP_NAME_SPECIAL_NOTES = 'testing_linkpred'
+EXP_NAME_SPECIAL_NOTES = 'combine_method_switch'
 
 # ##########################################
 # ##########################################
 
-PAPERS_TO_RUN = ["NSHE"]
-MODELS_TO_RUN = ["RGCN", "GTN", "HeGAN", "NSHE", 'MAGNN']
+PAPERS_TO_RUN = ["NSHE", "GTN"]
+MODELS_TO_RUN = ["RGCN", "GTN", "HeGAN", "NSHE", 'MAGNN', 'VGAE']
 
 
 #  arguments that affect runs WITH COCLUSTER_LOSS=TRUE
 ALTERABLE_ARGS = {'corruption_method': ['random'],
-                  'type_lambda': [1],
-                  'acm_dblp_from_gtn_initial_embs': ['deepwalk']}
+                  'loss_combine_method': ['naive', 'geom_mean', 'scaled'],
+                  'acm_dblp_from_gtn_initial_embs': ['deepwalk'],
+                  'homogeneous_VGAE': [True, False]}
 
 
 def create_experiment_name(args_, special_notes: str = '') -> str:
@@ -115,6 +116,11 @@ if __name__ == '__main__':
                 else:
                     altags = {argname: ALTERABLE_ARGS[argname] for argname in list(ALTERABLE_ARGS.keys()) if
                               argname != 'acm_dblp_from_gtn_initial_embs'}
+                # VGAE model has 2 variants: homogeneous, heterogeneous
+                if model != 'VGAE':
+                    altags = {argname: ALTERABLE_ARGS[argname] for argname in list(ALTERABLE_ARGS.keys()) if
+                              argname != 'homogeneous_VGAE'}
+
                 alterable_args_grid = ParameterGrid(altags)
                 for alterable_args_set in alterable_args_grid:
                     cprint('alterable args values: ' + str(alterable_args_set),
