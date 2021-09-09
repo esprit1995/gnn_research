@@ -12,7 +12,7 @@ import utils.HeGAN_utils as HeGAN_utils
 from downstream_tasks.evaluation_funcs import evaluate_clu_cla_GTN_NSHE_datasets, \
     evaluate_link_prediction_GTN_NSHE_datasets
 
-from torch_geometric.nn.conv import RGCNConv
+from torch_geometric.nn.conv import RGCNConv, GCNConv
 from torch_geometric.typing import OptTensor, Adj
 
 from utils.losses import push_pull_metapath_instance_loss_tf
@@ -54,6 +54,18 @@ class VariationalRGCNEncoder(nn.Module):
                 edge_index: Adj, edge_type: OptTensor = None):
         x = self.conv1(x, edge_index, edge_type).relu()
         return self.conv_mu(x, edge_index, edge_type), self.conv_logstd(x, edge_index, edge_type)
+
+
+class VariationalGCNEncoder(torch.nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super(VariationalGCNEncoder, self).__init__()
+        self.conv1 = GCNConv(in_channels, 2 * out_channels, cached=True)  # cached only for transductive learning
+        self.conv_mu = GCNConv(2 * out_channels, out_channels, cached=True)
+        self.conv_logstd = GCNConv(2 * out_channels, out_channels, cached=True)
+
+    def forward(self, x, edge_index):
+        x = self.conv1(x, edge_index).relu()
+        return self.conv_mu(x, edge_index), self.conv_logstd(x, edge_index)
 
 
 # ###############################################

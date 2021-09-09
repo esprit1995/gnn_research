@@ -2,7 +2,8 @@ import torch
 import numpy as np
 import pandas as pd
 from torch_geometric.nn import VGAE
-from models import RGCN, GTN, NSHE, MAGNN, HeGAN, VariationalRGCNEncoder
+from models import RGCN, GTN, NSHE, MAGNN, HeGAN,\
+                    VariationalRGCNEncoder, VariationalGCNEncoder
 from data_transforms import GTN_for_rgcn, GTN_for_gtn, NSHE_for_rgcn, NSHE_for_gtn, GTN_or_NSHE_for_nshe, \
     GTN_NSHE_for_MAGNN, GTN_NSHE_for_HeGAN
 
@@ -127,7 +128,7 @@ def train_rgcn(args):
     return output, all_ids, all_labels, id_type_mask, ds, epoch_num, metrics
 
 
-def train_vgae(args):
+def train_vgae(args, homogeneous: bool = True):
     # VGAE settings ##########
     output_dim = 64
     hidden_dim = 64
@@ -156,11 +157,18 @@ def train_vgae(args):
         neg_instances = None
         corruption_positions = None
 
-    model = VGAE(VariationalRGCNEncoder(node_feature_matrix.shape[1],
-                                        output_dim,
-                                        num_relations=pd.Series(edge_type.numpy()).nunique()))
+    if not homogeneous:
+        encoder = VariationalRGCNEncoder(node_feature_matrix.shape[1],
+                                         output_dim,
+                                         num_relations=pd.Series(edge_type.numpy()).nunique())
+    else:
+        encoder = VariationalGCNEncoder(node_feature_matrix.shape[1],
+                                        output_dim)
+
+    model = VGAE(encoder)
     model.train()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.005, weight_decay=args.weight_decay)
+    
     # keeping track of performance vs #epochs
     epoch_num = list()
     metrics = {'nmi': list(),
