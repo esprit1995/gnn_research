@@ -445,6 +445,30 @@ def sample_n_graphlet_instances(graphlet_template: dict, graph_info: Any, n_samp
 # ############        Miscellaneous           ################
 # ############################################################
 
+
+def combine_losses(l_baseline,
+                   l_ccl,
+                   method: str = 'naive'):
+    """
+    combine the baseline GNN loss with the CCL loss using either
+    naive summation, scaling or geometric mean
+    :param l_baseline: the calculated baseline loss
+    :param l_ccl: the calculated ccl loss
+    :param method: 'naive', 'scaled', 'geom_mean'. Default='naive'
+    :return: combined loss
+    """
+    if l_ccl is None:
+        return l_baseline
+    if method == 'naive':
+        return l_baseline + l_ccl
+    elif method == 'scaled':
+        return l_baseline + l_ccl * 10 ** (int(torch.log10(l_baseline / l_ccl)))
+    elif method == 'geom_mean':
+        return torch.sqrt(l_baseline * l_ccl)
+    else:
+        raise ValueError('combine_losses(): no implementation for method --> ' + str(method))
+
+
 def prepare_metapath_ccl_structures(args,
                                     ds,
                                     coclustering_metapaths_dict,

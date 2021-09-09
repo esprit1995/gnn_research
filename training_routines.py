@@ -1,14 +1,13 @@
 import torch
 import numpy as np
 import pandas as pd
-
 from torch_geometric.nn import VGAE
 from models import RGCN, GTN, NSHE, MAGNN, HeGAN, VariationalRGCNEncoder
 from data_transforms import GTN_for_rgcn, GTN_for_gtn, NSHE_for_rgcn, NSHE_for_gtn, GTN_or_NSHE_for_nshe, \
     GTN_NSHE_for_MAGNN, GTN_NSHE_for_HeGAN
 
 from utils.tools import heterogeneous_negative_sampling_naive,\
-    label_dict_to_metadata, prepare_metapath_ccl_structures
+    label_dict_to_metadata, prepare_metapath_ccl_structures, combine_losses
 from utils.losses import triplet_loss_pure, push_pull_metapath_instance_loss, NSHE_network_schema_loss
 from downstream_tasks.evaluation_funcs import evaluate_clu_cla_GTN_NSHE_datasets, \
     evaluate_link_prediction_GTN_NSHE_datasets
@@ -88,15 +87,20 @@ def train_rgcn(args):
         triplets = heterogeneous_negative_sampling_naive(edge_index, id_type_mask)
 
         # regular loss: triplet loss
-        loss = triplet_loss_pure(triplets, output) if args.base_triplet_loss else 0
+        base_loss = triplet_loss_pure(triplets, output) if args.base_triplet_loss else 0
         # additional co-clustering losses
+        ccl_loss = None
         if args.cocluster_loss:
             mptemplates = list(pos_instances.keys())
+            ccl_loss = 0
             for idx in range(len(mptemplates)):
-                loss = loss + args.type_lambda * push_pull_metapath_instance_loss(pos_instances[mptemplates[idx]],
-                                                                                  neg_instances[mptemplates[idx]],
-                                                                                  corruption_positions[idx],
-                                                                                  output)
+                ccl_loss = ccl_loss + push_pull_metapath_instance_loss(pos_instances[mptemplates[idx]],
+                                                                       neg_instances[mptemplates[idx]],
+                                                                       corruption_positions[idx],
+                                                                       output)
+        loss = combine_losses(l_baseline=base_loss,
+                              l_ccl=ccl_loss,
+                              method=args.loss_combine_method)
 
         losses.append(loss)
         optimizer.zero_grad()
@@ -172,15 +176,20 @@ def train_vgae(args):
                               edge_index=edge_index,
                               edge_type=edge_type)
         # regular loss: triplet loss
-        loss = model.recon_loss(output, edge_index) + (1 / id_type_mask.shape[0]) * model.kl_loss()
+        base_loss = model.recon_loss(output, edge_index) + (1 / id_type_mask.shape[0]) * model.kl_loss()
         # additional co-clustering losses
+        ccl_loss = None
         if args.cocluster_loss:
+            ccl_loss = 0
             mptemplates = list(pos_instances.keys())
             for idx in range(len(mptemplates)):
-                loss = loss + args.type_lambda * push_pull_metapath_instance_loss(pos_instances[mptemplates[idx]],
-                                                                                  neg_instances[mptemplates[idx]],
-                                                                                  corruption_positions[idx],
-                                                                                  output)
+                ccl_loss = ccl_loss + push_pull_metapath_instance_loss(pos_instances[mptemplates[idx]],
+                                                                       neg_instances[mptemplates[idx]],
+                                                                       corruption_positions[idx],
+                                                                       output)
+        loss = combine_losses(l_baseline=base_loss,
+                              l_ccl=ccl_loss,
+                              method=args.loss_combine_method)
         loss.backward()
         optimizer.step()
         if (epoch + 1) % args.downstream_eval_freq == 0 or epoch == 0:
@@ -262,15 +271,21 @@ def train_gtn(args):
         output = model(A, node_features)
         triplets = heterogeneous_negative_sampling_naive(edge_index, id_type_mask)
         # regular loss: triplet loss
-        loss = triplet_loss_pure(triplets, output) if args.base_triplet_loss else 0
+        base_loss = triplet_loss_pure(triplets, output) if args.base_triplet_loss else 0
+
         # additional co-clustering losses
+        ccl_loss = None
         if args.cocluster_loss:
             mptemplates = list(pos_instances.keys())
+            ccl_loss = 0
             for idx in range(len(mptemplates)):
-                loss = loss + args.type_lambda * push_pull_metapath_instance_loss(pos_instances[mptemplates[idx]],
-                                                                                  neg_instances[mptemplates[idx]],
-                                                                                  corruption_positions[idx],
-                                                                                  output)
+                ccl_loss = ccl_loss + push_pull_metapath_instance_loss(pos_instances[mptemplates[idx]],
+                                                                       neg_instances[mptemplates[idx]],
+                                                                       corruption_positions[idx],
+                                                                       output)
+        loss = combine_losses(l_baseline=base_loss,
+                              l_ccl=ccl_loss,
+                              method=args.loss_combine_method)
         loss.backward()
         optimizer.step()
         if (epoch + 1) % args.downstream_eval_freq == 0 or epoch == 0:
@@ -357,19 +372,24 @@ def train_nshe(args):
         triplets = heterogeneous_negative_sampling_naive(g.edge_index, g.id_type_mask)
         # regular loss: pairwise proximity loss. We use our loss, but it is very similar to the one
         # used in the original paper
-        loss = triplet_loss_pure(triplets, output) if args.base_triplet_loss else 0
+        base_loss = triplet_loss_pure(triplets, output) if args.base_triplet_loss else 0
 
         # network schema-preserving loss (multiplied by a coeff taken from the original paper)
-        loss = loss + hp.beta * NSHE_network_schema_loss(schema_preds, g.ns_label)
+        base_loss = base_loss + hp.beta * NSHE_network_schema_loss(schema_preds, g.ns_label)
 
         # additional co-clustering loss
+        ccl_loss = None
         if args.cocluster_loss:
             mptemplates = list(pos_instances.keys())
+            ccl_loss = 0
             for idx in range(len(mptemplates)):
-                loss = loss + args.type_lambda * push_pull_metapath_instance_loss(pos_instances[mptemplates[idx]],
-                                                                                  neg_instances[mptemplates[idx]],
-                                                                                  corruption_positions[idx],
-                                                                                  output)
+                ccl_loss = ccl_loss + push_pull_metapath_instance_loss(pos_instances[mptemplates[idx]],
+                                                                       neg_instances[mptemplates[idx]],
+                                                                       corruption_positions[idx],
+                                                                       output)
+        loss = combine_losses(l_baseline=base_loss,
+                              l_ccl=ccl_loss,
+                              method=args.loss_combine_method)
         loss.backward()
         optimizer.step()
         if (epoch + 1) % args.downstream_eval_freq == 0 or epoch == 0:
@@ -474,15 +494,20 @@ def train_magnn(args):
 
         triplets = heterogeneous_negative_sampling_naive(edge_index, id_type_mask)
         # regular loss: triplet loss
-        loss = triplet_loss_pure(triplets, output) if args.base_triplet_loss else 0
+        base_loss = triplet_loss_pure(triplets, output) if args.base_triplet_loss else 0
         # additional co-clustering losses
+        ccl_loss = None
         if args.cocluster_loss:
             mptemplates = list(pos_instances.keys())
+            ccl_loss = 0
             for idx in range(len(mptemplates)):
-                loss = loss + args.type_lambda * push_pull_metapath_instance_loss(pos_instances[mptemplates[idx]],
-                                                                                  neg_instances[mptemplates[idx]],
-                                                                                  corruption_positions[idx],
-                                                                                  output)
+                ccl_loss = ccl_loss + push_pull_metapath_instance_loss(pos_instances[mptemplates[idx]],
+                                                                       neg_instances[mptemplates[idx]],
+                                                                       corruption_positions[idx],
+                                                                       output)
+        loss = combine_losses(l_baseline=base_loss,
+                              l_ccl=ccl_loss,
+                              method=args.loss_combine_method)
         loss.backward()
         optimizer.step()
         optimizer.zero_grad()

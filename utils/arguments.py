@@ -29,6 +29,8 @@ def model_run_argparse():
                         help='reproducibility: seed for random generators. Default 10')
     parser.add_argument('--type_aware_loss', action='store_true',
                         help='whether to use type aware loss. Flag')
+    parser.add_argument('--loss_combine_method', type=str, default='naive',
+                        help='method to combine base and CCL losses. must be in ["naive" --> default, "geom_mean", "scaled"]')
     parser.add_argument('--base_triplet_loss', type=str2bool, default=True,
                         help='whether to use the default unsupervised learning loss - the triplet loss - as the base loss')
     parser.add_argument('--cocluster_loss', action='store_true',

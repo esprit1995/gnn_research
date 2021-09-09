@@ -16,6 +16,7 @@ from torch_geometric.nn.conv import RGCNConv
 from torch_geometric.typing import OptTensor, Adj
 
 from utils.losses import push_pull_metapath_instance_loss_tf
+from utils.tools import combine_losses
 
 from conv import GTLayer
 from conv import GraphConvolution, GraphAttentionConvolution
@@ -472,7 +473,7 @@ class Generator:
 
 class Discriminator:
     def __init__(self, n_node, n_relation, node_emd_init, relation_emd_init, config, cocluster_lambda,
-                 hidden_dim=-1, pos_instances=None, neg_instances=None, corruption_pos=None):
+                 loss_combine_method, hidden_dim=-1, pos_instances=None, neg_instances=None, corruption_pos=None):
         self.cocluster_lambda = cocluster_lambda
         self.n_node = n_node
         self.n_relation = n_relation
@@ -480,6 +481,7 @@ class Discriminator:
         self.relation_emd_init = relation_emd_init
         self.emd_dim = node_emd_init.shape[1]
         self.hidden_dim = self.emd_dim if hidden_dim == -1 else hidden_dim
+        self.loss_combine_method = loss_combine_method
 
         # with tf.variable_scope('discriminator'):
         self.dis_w_1 = tf.get_variable(name='dis_w',
@@ -561,7 +563,10 @@ class Discriminator:
                     neg_instances[mptemplates[idx]],
                     corruption_pos[idx],
                     self.node_embedding_matrix)
-            self.loss = self.pos_loss + self.neg_loss_1 + self.neg_loss_2 + self.cocluster_loss
+            base_loss = self.pos_loss + self.neg_loss_1 + self.neg_loss_2
+            self.loss = combine_losses(l_baseline=base_loss,
+                                       l_ccl=self.cocluster_loss,
+                                       method=self.loss_combine_method)
         optimizer = tf.train.AdamOptimizer(config.lr_dis)
         self.d_updates = optimizer.minimize(self.loss)
 
@@ -614,7 +619,8 @@ class HeGAN:
         # === preparations for the coclustering loss: start
         # ----------------------------------
         self.build_generator()
-        self.build_discriminator(pos_instances, neg_instances, corruption_positions, args.type_lambda)
+        self.build_discriminator(pos_instances, neg_instances, corruption_positions,
+                                 args.type_lambda, args.loss_combine_method)
 
         self.saver = tf.train.Saver()
 
@@ -651,7 +657,8 @@ class HeGAN:
                                    hidden_dim=self.config_hegan.hidden_dim,
                                    config=self.config_hegan)
 
-    def build_discriminator(self, pos_instances=None, neg_instances=None, corruption_pos=None, cocluster_lambda=0.1):
+    def build_discriminator(self, pos_instances=None, neg_instances=None, corruption_pos=None,
+                            cocluster_lambda=0.1, loss_combine_method='naive'):
         self.discriminator = Discriminator(n_node=self.n_node,
                                            n_relation=self.n_relation,
                                            node_emd_init=self.node_embed_init_d,
@@ -661,7 +668,9 @@ class HeGAN:
                                            neg_instances=neg_instances,
                                            corruption_pos=corruption_pos,
                                            cocluster_lambda=cocluster_lambda,
-                                           config=self.config_hegan)
+                                           config=self.config_hegan,
+                                           loss_combine_method=loss_combine_method
+                                           )
 
     def train(self):
         print('start training...')
