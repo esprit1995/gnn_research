@@ -8,7 +8,7 @@ import warnings
 from termcolor import cprint
 from pathlib import Path
 
-AVAILABLE_MODELS = ['RGCN', 'NSHE', 'GTN', 'MAGNN', 'HeGAN']
+AVAILABLE_MODELS = ['RGCN', 'NSHE', 'GTN', 'MAGNN', 'HeGAN', "VGAE"]
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--experiments_path', type=str, default=os.path.join(os.getcwd(), 'experiment_records'),
@@ -70,10 +70,11 @@ def collect_model_results(model_name: str,
         new_row = pd.DataFrame({**{'model': argparse_args['model'],
                                    'dataset': '_'.join([argparse_args['dataset'], argparse_args['from_paper']]),
                                    'initial_embs_GTN_paper': argparse_args["acm_dblp_from_gtn_initial_embs"],
+                                   'homogeneous_VGAE': argparse_args['homogeneous_VGAE'],
                                    'epochs': argparse_args['epochs'],
                                    'argparse_args': json.dumps(argparse_args),
                                    'cocluster_loss': bool(argparse_args['cocluster_loss']),
-                                   'lambda': argparse_args['type_lambda'],
+                                   'loss_combine_method': argparse_args['loss_combine_method'],
                                    'corruption_method': argparse_args['corruption_method']},
                                 **{metric: metrics[metric] for metric in METRIC_COLS}}, index=[0])
         if not result is None:
@@ -88,16 +89,21 @@ def collect_model_results(model_name: str,
     #                     result.query('cocluster_loss==True')])
     result_final = pd.DataFrame(columns=['model', 'dataset', 'initial_embs_GTN_paper', 'epochs',
                                          'argparse_args',
-                                         'cocluster_loss', 'lambda', 'corruption_method'] + metric_names +
-                                [metric_name + '_gain' for metric_name in metric_names if 'epoch' not in metric_name])
-
-    for _, group in result.groupby(['model', 'dataset', 'initial_embs_GTN_paper']):
+                                         'cocluster_loss', 'loss_combine_method', 'corruption_method'] + metric_names +
+                                        [metric_name + '_gain' for metric_name in metric_names if
+                                         'epoch' not in metric_name])
+    result['dataset'] = result.apply(
+        lambda row: row['dataset'] + '_' + row['initial_embs_GTN_paper'] if 'GTN' in row['dataset']
+        else row['dataset'], axis=1)
+    for _, group in result.groupby(['model', 'dataset']):
+        if group.shape[0] < 2:
+            continue
         baseline = group[group['cocluster_loss'] == False][metric_names].reset_index(drop=True)
         for col in [elem for elem in metric_names if 'epoch' not in elem]:
             group[col + '_gain'] = group[col].apply(lambda x: (x - baseline.loc[0, col]) / baseline.loc[0, col] * 100)
         result_final = result_final.append(group)
-    result_final = result_final.sort_values(by=['model', 'dataset', 'initial_embs_GTN_paper',
-                                                'cocluster_loss', 'lambda'])
+    result_final = result_final.sort_values(by=['model', 'dataset',
+                                                'cocluster_loss', 'loss_combine_method'])
     for col in metric_names + [elem + '_gain' for elem in metric_names if 'epoch' not in elem]:
         result_final[col] = result_final[col].apply(lambda x: round(float(x), 3))
     warnings.simplefilter('default')
@@ -128,6 +134,25 @@ def collect_all_results(experiments_path: str = '/home/ubuntu/msandal_code/PyG_p
                                                                         from_paper=from_paper)])
     return all_results
 
+
+def prepare_comparative_table(df, metric_name: str = 'nmi', loss_combine_method: str = 'naive'):
+    models = set(df['model'].tolist())
+    datasets = set(df['dataset'].tolist())
+    result = pd.DataFrame(index=datasets, columns=models)
+    for _, group in df.groupby(['model', 'dataset']):
+        gnn = group['model'].tolist()[0]
+        dsname = group['dataset'].tolist()[0]
+        try:
+            base_res = group.query('cocluster_loss == False')['best_' + metric_name].tolist()[0]
+            ccl_res = group.query('cocluster_loss == True').query('loss_combine_method == @loss_combine_method')[
+                'best_' + metric_name].tolist()[0]
+            metric_gain = group.query('cocluster_loss == True').query('loss_combine_method == @loss_combine_method')[
+                'best_' + metric_name + "_gain"].tolist()[0]
+            result.loc[dsname, gnn] = str(base_res) + ' / ' + str(ccl_res) + ' (' + str(metric_gain) + ' )'
+        except IndexError:
+            print('no comparative data available for model ' + gnn + ' on dataset ' + dsname)
+            continue
+    return result
 
 if __name__ == "__main__":
     warnings.simplefilter('ignore')

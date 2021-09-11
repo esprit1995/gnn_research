@@ -26,12 +26,15 @@ MODEL_EVAL_FREQ = {"RGCN": 5,
                    "GTN": 2,
                    "NSHE": 2,
                    "MAGNN": 1,
-                   "HeGAN": 1}
-MODEL_MAX_EPOCHS = {'RGCN': 100, # 500,
-                    'GTN': 10, # 30,
-                    "NSHE": 10, # 70,
-                    "MAGNN": 10, # 15,
-                    "HeGAN": 8 }# 15}
+                   "HeGAN": 1,
+                   "VGAE": 3}
+
+MODEL_MAX_EPOCHS = {'RGCN': 500,
+                    'GTN': 35,
+                    "NSHE": 100,
+                    "MAGNN": 15,
+                    "HeGAN": 15,
+                    "VGAE": 200}
 
 PAPER_DATASET = {"GTN": ['DBLP', 'ACM'],
                  "NSHE": ['DBLP', 'ACM']}
@@ -42,7 +45,7 @@ EXP_NAME_SPECIAL_NOTES = 'combine_method_switch'
 # ##########################################
 
 PAPERS_TO_RUN = ["NSHE", "GTN"]
-MODELS_TO_RUN = ["RGCN", "GTN", "HeGAN", "NSHE", 'MAGNN', 'VGAE']
+MODELS_TO_RUN = ["NSHE", 'MAGNN', 'VGAE']
 
 
 #  arguments that affect runs WITH COCLUSTER_LOSS=TRUE
@@ -99,13 +102,19 @@ if __name__ == '__main__':
                 cprint('-->Training without cocluster loss', color='yellow')
                 setattr(args, 'cocluster_loss', False)
                 GTN_initial_embs = ['original']
+                homogeneous_VGAE = [True]
                 if from_paper == 'GTN':
                     GTN_initial_embs.append('deepwalk')
+                if model == 'VGAE':
+                    homogeneous_VGAE.append(False)
                 for gtn_ie in GTN_initial_embs:
                     setattr(args, 'acm_dblp_from_gtn_initial_embs', gtn_ie)
-                    p = mp.Process(target=run_pipeline, args=(args, create_experiment_name(args, EXP_NAME_SPECIAL_NOTES)))
-                    p.start()
-                    p.join()
+                    for vgae_mode in homogeneous_VGAE:
+                        setattr(args, 'homogeneous_VGAE', vgae_mode)
+                        p = mp.Process(target=run_pipeline, args=(args, create_experiment_name(args, EXP_NAME_SPECIAL_NOTES)))
+                        p.start()
+                        p.join()
+
 
                 cprint('-->Training with cocluster loss', color='yellow')
                 setattr(args, 'cocluster_loss', True)

@@ -180,9 +180,13 @@ def train_vgae(args):
     output = None
     for epoch in range(args.epochs):
         model.zero_grad()
-        output = model.encode(x=node_feature_matrix.float(),
-                              edge_index=edge_index,
-                              edge_type=edge_type)
+        if not args.homogeneous_VGAE:
+            output = model.encode(x=node_feature_matrix.float(),
+                                  edge_index=edge_index,
+                                  edge_type=edge_type)
+        else:
+            output = model.encode(x=node_feature_matrix.float(),
+                                  edge_index=edge_index)
         # regular loss: triplet loss
         base_loss = model.recon_loss(output, edge_index) + (1 / id_type_mask.shape[0]) * model.kl_loss()
         # additional co-clustering losses
