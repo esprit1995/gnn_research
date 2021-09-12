@@ -8,7 +8,7 @@ import warnings
 from termcolor import cprint
 from pathlib import Path
 
-AVAILABLE_MODELS = ['RGCN', 'NSHE', 'GTN', 'MAGNN', 'HeGAN', "VGAE"]
+AVAILABLE_MODELS = ['RGCN', 'GTN', 'MAGNN',  "VGAE"]
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--experiments_path', type=str, default=os.path.join(os.getcwd(), 'experiment_records'),
@@ -95,6 +95,10 @@ def collect_model_results(model_name: str,
     result['dataset'] = result.apply(
         lambda row: row['dataset'] + '_' + row['initial_embs_GTN_paper'] if 'GTN' in row['dataset']
         else row['dataset'], axis=1)
+    result['model'] = result.apply(
+        lambda row: row['model'] + '_GCN' if row['homogeneous_VGAE'] and row['model'] == 'VGAE'
+        else row['model'], axis=1
+    )
     for _, group in result.groupby(['model', 'dataset']):
         if group.shape[0] < 2:
             continue

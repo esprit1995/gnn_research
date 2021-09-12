@@ -6,7 +6,7 @@ from datasets import DBLP_ACM_IMDB_from_NSHE
 from utils.losses import push_pull_metapath_instance_loss, push_pull_metapath_instance_loss_tf
 from utils.tools import sample_metapath_instances, corrupt_positive_metapath_instance
 from utils.tools import edge_index_to_adj_dict, edge_index_to_neg_adj_dict
-from utils.tools import sample_n_graphlet_instances
+from utils.tools import sample_n_graphlet_instances, corrupt_positive_graphlet_instance
 
 import os
 
@@ -165,8 +165,8 @@ def test_tf_pt_loss_correspondence():
                                                        tf.convert_to_tensor(toy_graph['node_features'].numpy()))
 
     difference = loss_from_tf.eval(session=tf.compat.v1.Session()).reshape(-1)[0] - loss_from_torch.item()
-    assert(abs(difference/loss_from_torch.item()) +
-           abs(difference/loss_from_tf.eval(session=tf.compat.v1.Session()).reshape(-1)[0]) < 0.00001)
+    assert (abs(difference / loss_from_torch.item()) +
+            abs(difference / loss_from_tf.eval(session=tf.compat.v1.Session()).reshape(-1)[0]) < 0.00001)
     return True
 
 
@@ -175,17 +175,6 @@ def test_sample_graphlet_instances():
                 'sub_paths': {
                     1: [['1', '0']]
                 }}
-    # adj_dicts = {('A', 'P'): {'0': np.array([1]),
-    #                           '5': np.array([1]),
-    #                           '4': np.array([3]),
-    #                           '6': np.array([3]),
-    #                           '7': np.array([3])},
-    #              ('P', 'A'): {'1': np.array([0, 5]),
-    #                           '3': np.array([4, 6, 7])},
-    #              ('P', 'C'): {'1': np.array([2]),
-    #                           '3': np.array([2])},
-    #              ('C', 'P'): {'2': np.array([1,3])}}
-    # starting_points = np.array([0, 4, 5, 6, 7])
     graph_info = dict()
     graph_info['node_type_mask'] = torch.tensor([0, 1, 2, 1, 0, 0, 0, 0])
     graph_info['edge_index_dict'] = {('0', '1'): torch.tensor([[0, 5, 6, 4, 7], [1, 1, 3, 3, 3]]),
@@ -196,8 +185,46 @@ def test_sample_graphlet_instances():
     return sampled_graphlets
 
 
+def test_graphlet_instance_corruption():
+    graph_info = dict()
+    graph_info['node_type_mask'] = torch.tensor([0, 1, 2, 1, 0, 0, 0, 0])
+    graph_info['edge_index_dict'] = {('0', '1'): torch.tensor([[0, 5, 6, 4, 7], [1, 1, 3, 3, 3]]),
+                                     ('1', '0'): torch.tensor([[1, 1, 3, 3, 3], [0, 5, 6, 4, 7]]),
+                                     ('1', '2'): torch.tensor([[1, 3], [2, 2]]),
+                                     ('2', '1'): torch.tensor([[2, 2], [1, 3]])}
+    template = {'main': ['0', '1', '2'],
+                'sub_paths': {
+                    1: [['1', '0']]
+                }}
+    instance = {'main': [0, 1, 2],
+                'sub_paths': {
+                    1: [[1, 5]]
+                },
+                'node_ids_present': [0, 1, 2, 5]}
+    corr_positions = {'main': (0, 1),
+                      'sub_paths': {
+                          1: [(0, 0)]
+                      }}
+    node_type_mask = torch.tensor([0, 1, 2, 1, 0, 0, 0, 0])
+    adj_dicts = dict()
+    neg_adj_dict = dict()
+    for adj_type in [('0', '1'), ('1', '2'), ('2', '1'), ('1', '0')]:
+        adj_dicts[adj_type] = edge_index_to_adj_dict(graph_info['edge_index_dict'],
+                                                     graph_info['node_type_mask'],
+                                                     adj_type)
+        neg_adj_dict[adj_type] = edge_index_to_neg_adj_dict(graph_info['edge_index_dict'],
+                                                            graph_info['node_type_mask'],
+                                                            adj_type)
+
+    result = corrupt_positive_graphlet_instance(instance, template, corr_positions,
+                                                adj_dicts, neg_adj_dict, node_type_mask)
+    return result
+
+
 if __name__ == "__main__":
-    ds = DBLP_ACM_IMDB_from_NSHE(name='dblp', root='/home/ubuntu/msandal_code/PyG_playground/data/NSHE')[0]
-    graphlet_template = {'main': ['0', '1', '2', '1'], 'sub_paths': {0: [['0', '1', '2']]}}
-    graphlets = sample_n_graphlet_instances(graphlet_template, ds, n_samples=10000)
+    # ds = DBLP_ACM_IMDB_from_NSHE(name='dblp', root='/home/ubuntu/msandal_code/PyG_playground/data/NSHE')[0]
+    # graphlet_template = {'main': ['0', '1', '2', '1'], 'sub_paths': {0: [['0', '1', '2']]}}
+    # graphlets = sample_n_graphlet_instances(graphlet_template, ds, n_samples=10000)
+    for _ in range(10):
+        print(test_graphlet_instance_corruption())
     print('done')

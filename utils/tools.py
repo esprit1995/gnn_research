@@ -238,8 +238,8 @@ def corrupt_positive_metapath_instance(mpinstance: tuple,
             if indx == 0:
                 candidates = np.where(node_type_mask.numpy() == int(mptemplate[indx]))[0]
                 corrupted_instance[indx] = np.random.choice(
-                    np.delete(np.argwhere(candidates == mpinstance[0]),
-                              candidates,
+                    np.delete(candidates,
+                              np.argwhere(candidates == mpinstance[0]),
                               0))
             else:
                 transition_type = (mptemplate[indx - 1], mptemplate[indx])
@@ -327,6 +327,15 @@ def IMDB_DBLP_ACM_metapath_instance_sampler(dataset, metapath: Tuple, n: int,
 #                               1: [[101, 200], [101, 10]]
 #                               },
 #                        'node_ids_present': [100, 101, 4, 200, 10] ---> indicates which nodes are used in this instance}
+# instance corruption: only random method will be implemented
+# the linear components of the graphlet will be corrupted one-by-one
+# example: for the above template, we must pass the corruption positions for every linear component
+# corruption_positions = {'main': (1,2), --> corrupt P, A  in APA main lane
+#                           'sub_paths': {
+#                               1: [(1,1), (1,2)] ---> corrupt P in PA and PC in PC subpaths
+#                           }}
+# note: if we corrupt a position in the main lane, it also will be corrupted in all the subpaths
+# where it serves as the base
 
 def make_step_restricted(current: int, adj_dict__: dict, to_avoid: list):
     """
@@ -439,6 +448,108 @@ def sample_n_graphlet_instances(graphlet_template: dict, graph_info: Any, n_samp
         if graphlet_instance is not None:
             results.append(graphlet_instance)
     return remove_duplicate_graphlets(list(results))
+
+
+def corrupt_positive_metapath_component(mpinstance: tuple,
+                                        mptemplate: tuple,
+                                        positions: tuple,
+                                        to_avoid: list,
+                                        neg_adj_dicts: dict,
+                                        node_type_mask: torch.tensor):
+    """
+    corrupt positive metapath instance by replacing the nodes indicated by __positions__ argument
+    in one of the 2 ways: replace with random negatives, replace with part of another metapath instance
+    :param mpinstance: a metapath instance, a tuple containing node ids
+    :param mptemplate: a metapath template, a tuple like ('1', '2', '1')
+    :param positions: positions where to corrupt the instance, tuple (min_index, max_index).
+                      a) if min_index == max_index, corrupt in just one spot
+                      b) else, corrupt between min_index and max_index inclusively
+    :param to_avoid: list of nodes that should be avoided. will be modified
+    :param neg_adj_dicts: precomputed negative adjacency dictionaries
+    :param node_type_mask: tensor encoding node types
+    :return: tuple - corrupted mptemplate instance or None in case of problems
+    """
+    used_nodes = list()
+    assert positions[1] < len(mptemplate) or positions[0] > 0, \
+        'corrupt_positive_metapath_instance(): invalid positions argument, out of range'
+    corrupted_instance = list(mpinstance)
+
+    # corrupt with just some random nodes
+    for indx in range(positions[0], positions[1] + 1):
+        if indx == 0:
+            candidates = np.where(node_type_mask.numpy() == int(mptemplate[indx]))[0]
+            acceptable_candidates = np.delete(candidates,
+                                              np.argwhere(candidates == mpinstance[0]),
+                                              0)
+            acceptable_candidates = np.array([elem for elem in acceptable_candidates if elem not in to_avoid + used_nodes])
+            corrupted_instance[indx] = np.random.choice(acceptable_candidates)
+
+        else:
+            transition_type = (mptemplate[indx - 1], mptemplate[indx])
+            corrupted_instance[indx] = make_step_restricted(mpinstance[indx - 1],
+                                                            neg_adj_dicts[transition_type],
+                                                            to_avoid=to_avoid+used_nodes)
+        used_nodes.append(corrupted_instance[indx])
+
+    return tuple(corrupted_instance), used_nodes
+
+
+def corrupt_positive_graphlet_instance(ginstance,
+                                       gtemplate,
+                                       corr_positions,
+                                       adj_dicts,
+                                       neg_adj_dicts,
+                                       node_type_mask):
+    """
+    corrupt a multilinear graphlet instance
+    :param ginstance: graphlet instance in the format described in the section header
+    :param gtemplate: graphlet template
+    :param corr_positions: positions at which the graphlet is to be corrupted (see section header for more)
+    :param adj_dicts: graph adjacency dictionaries
+    :param neg_adj_dicts: graph negative adjacency dictionaries
+    :param node_type_mask: tensor containing node type mask
+    :return: corrupted graphlet instance or None in case of problems
+    """
+    result = dict()
+    result['main'], used_nodes = corrupt_positive_metapath_component(mpinstance=ginstance['main'],
+                                                                     mptemplate=gtemplate['main'],
+                                                                     positions=corr_positions['main'],
+                                                                     to_avoid=ginstance['node_ids_present'],
+                                                                     neg_adj_dicts=neg_adj_dicts,
+                                                                     node_type_mask=node_type_mask)
+    if result['main'] is None:
+        return None
+    result['sub_paths'] = dict()
+    for start_idx in list(gtemplate['sub_paths'].keys()):
+        start_corrupted = corr_positions['main'][0] <= start_idx <= corr_positions['main'][1]
+        for submpinstance, submptemplate, submppositions in zip(ginstance['sub_paths'][start_idx],
+                                                                gtemplate['sub_paths'][start_idx],
+                                                                corr_positions['sub_paths'][start_idx]):
+            if start_corrupted and submppositions[0] == 0:
+                # no need to corrupt the same node twice
+                submppositions = (1, submppositions[1])
+            if submppositions[1] < submppositions[0]:
+                # can happen that no further corruption is required
+                corrupted_subpath = [result['main'][start_idx]] + [elem for elem in submpinstance[1:]]
+                try:
+                    result['sub_paths'][start_idx].append(tuple(corrupted_subpath))
+                except KeyError:
+                    result['sub_paths'][start_idx] = [corrupted_subpath]
+                continue
+            corrupted_subpath, new_used_nodes = list(corrupt_positive_metapath_component(mpinstance=submpinstance,
+                                                                                         mptemplate=submptemplate,
+                                                                                         positions=submppositions,
+                                                                                         to_avoid=ginstance['node_ids_present'] + used_nodes,
+                                                                                         neg_adj_dicts=neg_adj_dicts,
+                                                                                         node_type_mask=node_type_mask))
+            used_nodes = used_nodes + new_used_nodes
+            if corrupted_subpath is None:
+                return None
+            try:
+                result['sub_paths'][start_idx].append(tuple(corrupted_subpath))
+            except KeyError:
+                result['sub_paths'][start_idx] = [tuple(corrupted_subpath)]
+    return result
 
 
 # ############################################################

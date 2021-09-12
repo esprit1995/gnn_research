@@ -37,15 +37,15 @@ MODEL_MAX_EPOCHS = {'RGCN': 500,
                     "VGAE": 200}
 
 PAPER_DATASET = {"GTN": ['DBLP', 'ACM'],
-                 "NSHE": ['DBLP', 'ACM']}
+                 "NSHE": ['ACM']}
 
 EXP_NAME_SPECIAL_NOTES = 'combine_method_switch'
 
 # ##########################################
 # ##########################################
 
-PAPERS_TO_RUN = ["NSHE", "GTN"]
-MODELS_TO_RUN = ["NSHE", 'MAGNN', 'VGAE']
+PAPERS_TO_RUN = ["NSHE"]
+MODELS_TO_RUN = ["NSHE"]
 
 
 #  arguments that affect runs WITH COCLUSTER_LOSS=TRUE
