@@ -497,7 +497,6 @@ def corrupt_positive_metapath_component(mpinstance: tuple,
 def corrupt_positive_graphlet_instance(ginstance,
                                        gtemplate,
                                        corr_positions,
-                                       adj_dicts,
                                        neg_adj_dicts,
                                        node_type_mask):
     """
@@ -551,6 +550,25 @@ def corrupt_positive_graphlet_instance(ginstance,
                 result['sub_paths'][start_idx] = [tuple(corrupted_subpath)]
     return result
 
+
+def IMDB_DBLP_ACM_graphlet_instance_sampler(dataset, gtemplate,  n: int,
+                                            corruption_positions):
+    ds = dataset
+    adj_dicts = dict()
+    neg_adj_dicts = dict()
+    for key in list(ds['edge_index_dict'].keys()):
+        adj_dicts[key] = edge_index_to_adj_dict(ds['edge_index_dict'], ds['node_type_mask'], key)
+        neg_adj_dicts[key] = edge_index_to_neg_adj_dict(ds['edge_index_dict'], ds['node_type_mask'], key)
+
+    positive_instances = sample_n_graphlet_instances(gtemplate, ds, n)
+    negative_instances = list()
+    for i in range(len(positive_instances)):
+        negative_instances.append(corrupt_positive_graphlet_instance(positive_instances[i],
+                                                                     gtemplate,
+                                                                     corruption_positions,
+                                                                     neg_adj_dicts,
+                                                                     ds['node_type_mask']))
+    return positive_instances, negative_instances
 
 # ############################################################
 # ############        Miscellaneous           ################

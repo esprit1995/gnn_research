@@ -206,18 +206,15 @@ def test_graphlet_instance_corruption():
                           1: [(0, 0)]
                       }}
     node_type_mask = torch.tensor([0, 1, 2, 1, 0, 0, 0, 0])
-    adj_dicts = dict()
     neg_adj_dict = dict()
     for adj_type in [('0', '1'), ('1', '2'), ('2', '1'), ('1', '0')]:
-        adj_dicts[adj_type] = edge_index_to_adj_dict(graph_info['edge_index_dict'],
-                                                     graph_info['node_type_mask'],
-                                                     adj_type)
+
         neg_adj_dict[adj_type] = edge_index_to_neg_adj_dict(graph_info['edge_index_dict'],
                                                             graph_info['node_type_mask'],
                                                             adj_type)
 
     result = corrupt_positive_graphlet_instance(instance, template, corr_positions,
-                                                adj_dicts, neg_adj_dict, node_type_mask)
+                                                neg_adj_dict, node_type_mask)
     return result
 
 
