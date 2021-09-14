@@ -2,14 +2,15 @@ import torch
 import numpy as np
 import pandas as pd
 from torch_geometric.nn import VGAE
-from models import RGCN, GTN, NSHE, MAGNN, HeGAN,\
-                    VariationalRGCNEncoder, VariationalGCNEncoder
+from models import RGCN, GTN, NSHE, MAGNN, HeGAN, \
+    VariationalRGCNEncoder, VariationalGCNEncoder
 from data_transforms import GTN_for_rgcn, GTN_for_gtn, NSHE_for_rgcn, NSHE_for_gtn, GTN_or_NSHE_for_nshe, \
     GTN_NSHE_for_MAGNN, GTN_NSHE_for_HeGAN
 
-from utils.tools import heterogeneous_negative_sampling_naive,\
-    label_dict_to_metadata, prepare_metapath_ccl_structures, combine_losses
-from utils.losses import triplet_loss_pure, push_pull_metapath_instance_loss, NSHE_network_schema_loss
+from utils.tools import heterogeneous_negative_sampling_naive, \
+    label_dict_to_metadata, prepare_ccl_structures, combine_losses
+from utils.losses import triplet_loss_pure, push_pull_metapath_instance_loss, \
+    push_pull_graphlet_instance_loss, NSHE_network_schema_loss
 from downstream_tasks.evaluation_funcs import evaluate_clu_cla_GTN_NSHE_datasets, \
     evaluate_link_prediction_GTN_NSHE_datasets
 from utils.MAGNN_utils import nega_sampling, Batcher, prepare_minibatch
@@ -32,14 +33,29 @@ COCLUSTERING_METAPATHS = {'ACM': [('0', '1', '0', '2'), ('2', '0', '1'), ('1', '
 CORRUPTION_POSITIONS = {'ACM': [(1, 2), (2, 2), (1, 3)],
                         'DBLP': [(1, 1), (1, 2), (2, 2), (2, 4)]}
 
+# multilinear graphlets
+COCLUSTERING_GRAPHLETS = {'ACM': [{'main': ['1', '0', '2', '0', '1'],
+                                   'sub_paths': {2: [['2', '0', '1']],
+                                                 1: [['0', '1', '0', '2']]}}],
+                          'DBLP': [{'main': ['0', '1', '2', '1', '0'],
+                                    'sub_paths': {2: [['2', '1', '0'], ['2', '1'], ['2', '1']],
+                                                  1: [['1', '0'], ['1', '0']]}}]}
+
+CORRUPTION_POSITIONS_GRAPHLETS = {'ACM': [{'main': (1, 3),
+                                           'sub_paths': {2: [(0, 1)],
+                                                         1: [(0, 1)]}}],
+                                  'DBLP': [{'main': (2, 4),
+                                            'sub_paths': {2: [(0, 0), (0, 0), (0, 0)],
+                                                          1: [(1, 1), (1, 1)]}}]}
+
 
 def train_rgcn(args):
     # RGCN settings ##########
     output_dim = 64
     hidden_dim = 64
     num_layers = 2
-    coclustering_metapaths_dict = COCLUSTERING_METAPATHS
-    corruption_positions_dict = CORRUPTION_POSITIONS
+    coclustering_metapaths_dict = COCLUSTERING_METAPATHS if not args.multilinear_graphlets else COCLUSTERING_GRAPHLETS
+    corruption_positions_dict = CORRUPTION_POSITIONS if not args.multilinear_graphlets else CORRUPTION_POSITIONS_GRAPHLETS
     # #######################
 
     # ========> preparing data: wrangling, sampling
@@ -54,10 +70,10 @@ def train_rgcn(args):
             'train_rgcn(): for requested paper ---' + str(args.from_paper) + '--- training RGCN is not possible')
     # sampling metapath instances for the cocluster push-pull loss
     if args.cocluster_loss:
-        pos_instances, neg_instances, corruption_positions = prepare_metapath_ccl_structures(args,
-                                                                                             ds,
-                                                                                             coclustering_metapaths_dict,
-                                                                                             corruption_positions_dict)
+        pos_instances, neg_instances, corruption_positions = prepare_ccl_structures(args,
+                                                                                    ds,
+                                                                                    coclustering_metapaths_dict,
+                                                                                    corruption_positions_dict)
     else:
         pos_instances = None
         neg_instances = None
@@ -79,6 +95,7 @@ def train_rgcn(args):
                'microf1': list(),
                'roc_auc': list(),
                'f1': list()}
+    ccl_loss_func = push_pull_graphlet_instance_loss if args.multilinear_graphlets else push_pull_metapath_instance_loss
 
     for epoch in range(args.epochs):
         model = model.float()
@@ -92,13 +109,13 @@ def train_rgcn(args):
         # additional co-clustering losses
         ccl_loss = None
         if args.cocluster_loss:
-            mptemplates = list(pos_instances.keys())
+            templates = list(pos_instances.keys())
             ccl_loss = 0
-            for idx in range(len(mptemplates)):
-                ccl_loss = ccl_loss + push_pull_metapath_instance_loss(pos_instances[mptemplates[idx]],
-                                                                       neg_instances[mptemplates[idx]],
-                                                                       corruption_positions[idx],
-                                                                       output)
+            for idx, template in enumerate(templates):
+                ccl_loss = ccl_loss + ccl_loss_func(pos_instances=pos_instances[template],
+                                                    corrupted_instances=neg_instances[template],
+                                                    corrupted_positions=corruption_positions[idx],
+                                                    node_embeddings=output)
         loss = combine_losses(l_baseline=base_loss,
                               l_ccl=ccl_loss,
                               method=args.loss_combine_method)
@@ -148,10 +165,10 @@ def train_vgae(args):
     # sampling metapath instances for the cocluster push-pull loss
     if args.cocluster_loss:
         pos_instances, neg_instances, corruption_positions = \
-            prepare_metapath_ccl_structures(args=args,
-                                            ds=ds,
-                                            coclustering_metapaths_dict=coclustering_metapaths_dict,
-                                            corruption_positions_dict=corruption_positions_dict)
+            prepare_ccl_structures(args=args,
+                                   ds=ds,
+                                   coclustering_metapaths_dict=coclustering_metapaths_dict,
+                                   corruption_positions_dict=corruption_positions_dict)
     else:
         pos_instances = None
         neg_instances = None
@@ -251,10 +268,10 @@ def train_gtn(args):
     # sampling metapath instances for the cocluster push-pull loss
     if args.cocluster_loss:
         pos_instances, neg_instances, corruption_positions = \
-            prepare_metapath_ccl_structures(args=args,
-                                            ds=ds,
-                                            coclustering_metapaths_dict=coclustering_metapaths_dict,
-                                            corruption_positions_dict=corruption_positions_dict)
+            prepare_ccl_structures(args=args,
+                                   ds=ds,
+                                   coclustering_metapaths_dict=coclustering_metapaths_dict,
+                                   corruption_positions_dict=corruption_positions_dict)
     else:
         pos_instances = None
         neg_instances = None
@@ -356,10 +373,10 @@ def train_nshe(args):
     # sampling metapath instances for the cocluster push-pull loss
     if args.cocluster_loss:
         pos_instances, neg_instances, corruption_positions = \
-            prepare_metapath_ccl_structures(args=args,
-                                            ds=g.ds,
-                                            coclustering_metapaths_dict=coclustering_metapaths_dict,
-                                            corruption_positions_dict=corruption_positions_dict)
+            prepare_ccl_structures(args=args,
+                                   ds=g.ds,
+                                   coclustering_metapaths_dict=coclustering_metapaths_dict,
+                                   corruption_positions_dict=corruption_positions_dict)
     else:
         pos_instances = None
         neg_instances = None
@@ -457,10 +474,10 @@ def train_magnn(args):
     # sampling metapath instances for the cocluster push-pull loss
     if args.cocluster_loss:
         pos_instances, neg_instances, corruption_positions = \
-            prepare_metapath_ccl_structures(args=args,
-                                            ds=ds,
-                                            coclustering_metapaths_dict=coclustering_metapaths_dict,
-                                            corruption_positions_dict=corruption_positions_dict)
+            prepare_ccl_structures(args=args,
+                                   ds=ds,
+                                   coclustering_metapaths_dict=coclustering_metapaths_dict,
+                                   corruption_positions_dict=corruption_positions_dict)
     else:
         pos_instances = None
         neg_instances = None
@@ -581,10 +598,10 @@ def train_hegan(args):
     # sampling metapath instances for the cocluster push-pull loss
     if args.cocluster_loss:
         pos_instances, neg_instances, corruption_positions = \
-            prepare_metapath_ccl_structures(args=args,
-                                            ds=ds,
-                                            coclustering_metapaths_dict=coclustering_metapaths_dict,
-                                            corruption_positions_dict=corruption_positions_dict)
+            prepare_ccl_structures(args=args,
+                                   ds=ds,
+                                   coclustering_metapaths_dict=coclustering_metapaths_dict,
+                                   corruption_positions_dict=corruption_positions_dict)
     else:
         pos_instances = None
         neg_instances = None

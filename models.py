@@ -16,7 +16,7 @@ from torch_geometric.nn.conv import RGCNConv, GCNConv
 from torch_geometric.typing import OptTensor, Adj
 
 from utils.losses import push_pull_metapath_instance_loss_tf
-from utils.tools import combine_losses
+from utils.tools import combine_losses, combine_losses_tf
 
 from conv import GTLayer
 from conv import GraphConvolution, GraphAttentionConvolution
@@ -576,9 +576,9 @@ class Discriminator:
                     corruption_pos[idx],
                     self.node_embedding_matrix)
             base_loss = self.pos_loss + self.neg_loss_1 + self.neg_loss_2
-            self.loss = combine_losses(l_baseline=base_loss,
-                                       l_ccl=self.cocluster_loss,
-                                       method=self.loss_combine_method)
+            self.loss = combine_losses_tf(l_baseline=base_loss,
+                                          l_ccl=self.cocluster_loss,
+                                          method=self.loss_combine_method)
         optimizer = tf.train.AdamOptimizer(config.lr_dis)
         self.d_updates = optimizer.minimize(self.loss)
 

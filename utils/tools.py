@@ -5,6 +5,7 @@ import multiprocessing as mp
 from tqdm import tqdm
 from torch_geometric.typing import Adj
 import scipy.sparse as sp
+import tensorflow as tf
 from sklearn.preprocessing import OneHotEncoder
 
 from typing import Dict, Tuple, Any
@@ -381,6 +382,9 @@ def sample_graphlet_instance(graphlet_template: dict,
                                                               starting_points_=starting_points,
                                                               random_seed=random_seed,
                                                               stepping_method=make_step))
+    # we do not want linear components that 'walked back' on themselves
+    if len(graphlet_instance['main']) != len(set(graphlet_instance['main'])):
+        return None
     graphlet_instance['node_ids_present'] = [] + graphlet_instance['main']
     # sample sub paths
     graphlet_instance['sub_paths'] = dict()
@@ -467,7 +471,7 @@ def corrupt_positive_metapath_component(mpinstance: tuple,
     :param to_avoid: list of nodes that should be avoided. will be modified
     :param neg_adj_dicts: precomputed negative adjacency dictionaries
     :param node_type_mask: tensor encoding node types
-    :return: tuple - corrupted mptemplate instance or None in case of problems
+    :return:
     """
     used_nodes = list()
     assert positions[1] < len(mptemplate) or positions[0] > 0, \
@@ -481,17 +485,18 @@ def corrupt_positive_metapath_component(mpinstance: tuple,
             acceptable_candidates = np.delete(candidates,
                                               np.argwhere(candidates == mpinstance[0]),
                                               0)
-            acceptable_candidates = np.array([elem for elem in acceptable_candidates if elem not in to_avoid + used_nodes])
+            acceptable_candidates = np.array(
+                [elem for elem in acceptable_candidates if elem not in to_avoid + used_nodes])
             corrupted_instance[indx] = np.random.choice(acceptable_candidates)
 
         else:
             transition_type = (mptemplate[indx - 1], mptemplate[indx])
             corrupted_instance[indx] = make_step_restricted(mpinstance[indx - 1],
                                                             neg_adj_dicts[transition_type],
-                                                            to_avoid=to_avoid+used_nodes)
+                                                            to_avoid=to_avoid + used_nodes)
         used_nodes.append(corrupted_instance[indx])
 
-    return tuple(corrupted_instance), used_nodes
+    return corrupted_instance, used_nodes
 
 
 def corrupt_positive_graphlet_instance(ginstance,
@@ -531,27 +536,30 @@ def corrupt_positive_graphlet_instance(ginstance,
                 # can happen that no further corruption is required
                 corrupted_subpath = [result['main'][start_idx]] + [elem for elem in submpinstance[1:]]
                 try:
-                    result['sub_paths'][start_idx].append(tuple(corrupted_subpath))
+                    result['sub_paths'][start_idx].append(corrupted_subpath)
                 except KeyError:
                     result['sub_paths'][start_idx] = [corrupted_subpath]
                 continue
-            corrupted_subpath, new_used_nodes = list(corrupt_positive_metapath_component(mpinstance=submpinstance,
-                                                                                         mptemplate=submptemplate,
-                                                                                         positions=submppositions,
-                                                                                         to_avoid=ginstance['node_ids_present'] + used_nodes,
-                                                                                         neg_adj_dicts=neg_adj_dicts,
-                                                                                         node_type_mask=node_type_mask))
+            corrupted_subpath, new_used_nodes = corrupt_positive_metapath_component(mpinstance=tuple(submpinstance),
+                                                                                    mptemplate=submptemplate,
+                                                                                    positions=submppositions,
+                                                                                    to_avoid=ginstance[
+                                                                                                 'node_ids_present'] + used_nodes,
+                                                                                    neg_adj_dicts=neg_adj_dicts,
+                                                                                    node_type_mask=node_type_mask)
             used_nodes = used_nodes + new_used_nodes
+            corrupted_subpath[0] = result['main'][start_idx]
             if corrupted_subpath is None:
                 return None
             try:
-                result['sub_paths'][start_idx].append(tuple(corrupted_subpath))
+                result['sub_paths'][start_idx].append(corrupted_subpath)
             except KeyError:
-                result['sub_paths'][start_idx] = [tuple(corrupted_subpath)]
+                result['sub_paths'][start_idx] = [corrupted_subpath]
+    result['original_node_ids_present'] = ginstance['node_ids_present']
     return result
 
 
-def IMDB_DBLP_ACM_graphlet_instance_sampler(dataset, gtemplate,  n: int,
+def IMDB_DBLP_ACM_graphlet_instance_sampler(dataset, gtemplate, n: int,
                                             corruption_positions):
     ds = dataset
     adj_dicts = dict()
@@ -570,9 +578,33 @@ def IMDB_DBLP_ACM_graphlet_instance_sampler(dataset, gtemplate,  n: int,
                                                                      ds['node_type_mask']))
     return positive_instances, negative_instances
 
+
 # ############################################################
 # ############        Miscellaneous           ################
 # ############################################################
+
+def stretch_graphlet(ginstance, negative: bool = False):
+    """
+    allows to use the metapath push-pull loss on multilinear graphlets
+    :param ginstance: graphlet instance
+    :param negative: true if the ginstance is negative, else true
+    :return: stretched graphlet
+    """
+    if not negative:
+        # if all nodes are positive, we don't care about their relative positions
+        # and just return the list of nodes present
+        return list(set(ginstance['node_ids_present']))
+    else:
+        mixed_nodes = list(ginstance['main'])
+        for start_idx in list(ginstance['sub_paths'].keys()):
+            for subpath in ginstance['sub_paths'][start_idx]:
+                mixed_nodes = mixed_nodes + subpath
+        mixed_nodes = list(set(mixed_nodes))
+        pos_nodes = set(ginstance['original_node_ids_present']).intersection(set(mixed_nodes))
+        neg_nodes = set(mixed_nodes).difference(set(ginstance['original_node_ids_present']))
+        neg_instance = list(pos_nodes) + list(neg_nodes)
+        corr_pos = (len(list(pos_nodes)), len(neg_instance) - 1)
+        return neg_instance, corr_pos
 
 
 def combine_losses(l_baseline,
@@ -598,10 +630,47 @@ def combine_losses(l_baseline,
         raise ValueError('combine_losses(): no implementation for method --> ' + str(method))
 
 
-def prepare_metapath_ccl_structures(args,
-                                    ds,
-                                    coclustering_metapaths_dict,
-                                    corruption_positions_dict):
+def tf_log10(t):
+    """
+    Calculates the base-10 log of each element in t.
+
+    @param t: The tensor from which to calculate the base-10 log.
+
+    @return: A tensor with the base-10 log of each element in t.
+    """
+
+    numerator = tf.log(t)
+    denominator = tf.log(tf.constant(10, dtype=numerator.dtype))
+    return numerator / denominator
+
+
+def combine_losses_tf(l_baseline,
+                      l_ccl,
+                      method: str = 'naive'):
+    """
+    combine the baseline GNN loss with the CCL loss using either
+    naive summation, scaling or geometric mean
+    :param l_baseline: the calculated baseline loss
+    :param l_ccl: the calculated ccl loss
+    :param method: 'naive', 'scaled', 'geom_mean'. Default='naive'
+    :return: combined loss
+    """
+    if l_ccl is None:
+        return l_baseline
+    if method == 'naive':
+        return l_baseline + l_ccl
+    elif method == 'scaled':
+        return l_baseline + l_ccl * 10 ** (int(tf_log10(l_baseline / l_ccl)))
+    elif method == 'geom_mean':
+        return tf.sqrt(l_baseline * l_ccl)
+    else:
+        raise ValueError('combine_losses(): no implementation for method --> ' + str(method))
+
+
+def prepare_ccl_structures(args,
+                           ds,
+                           coclustering_metapaths_dict,
+                           corruption_positions_dict):
     """
     prepare data structures for the metapath-base coclustering loss
     :param args: experiment run arguments
@@ -612,23 +681,41 @@ def prepare_metapath_ccl_structures(args,
     """
     pos_instances = dict()
     neg_instances = dict()
+    if not args.multilinear_graphlets:
+        try:
+            metapath_templates, corruption_positions = coclustering_metapaths_dict[args.dataset], \
+                                                       corruption_positions_dict[
+                                                           args.dataset]
+        except Exception as e:
+            raise ValueError('co-clustering loss is not supported for dataset name ' + str(args.dataset))
 
-    try:
-        metapath_templates, corruption_positions = coclustering_metapaths_dict[args.dataset], \
-                                                   corruption_positions_dict[
-                                                       args.dataset]
-    except Exception as e:
-        raise ValueError('co-clustering loss is not supported for dataset name ' + str(args.dataset))
+        for mptemplate_idx in range(len(metapath_templates)):
+            pos_instances[metapath_templates[mptemplate_idx]], \
+            neg_instances[metapath_templates[mptemplate_idx]] = IMDB_DBLP_ACM_metapath_instance_sampler(
+                dataset=ds,
+                metapath=metapath_templates[mptemplate_idx],
+                n=args.instances_per_template,
+                corruption_method=args.corruption_method,
+                corruption_position=corruption_positions[mptemplate_idx])
+        return pos_instances, neg_instances, corruption_positions
+    if args.multilinear_graphlets:
+        pos_instances = dict()
+        neg_instances = dict()
+        try:
+            metapath_templates, corruption_positions = coclustering_metapaths_dict[args.dataset], \
+                                                       corruption_positions_dict[
+                                                           args.dataset]
+        except Exception as e:
+            raise ValueError('co-clustering loss is not supported for dataset name ' + str(args.dataset))
 
-    for mptemplate_idx in range(len(metapath_templates)):
-        pos_instances[metapath_templates[mptemplate_idx]], \
-        neg_instances[metapath_templates[mptemplate_idx]] = IMDB_DBLP_ACM_metapath_instance_sampler(
-            dataset=ds,
-            metapath=metapath_templates[mptemplate_idx],
-            n=args.instances_per_template,
-            corruption_method=args.corruption_method,
-            corruption_position=corruption_positions[mptemplate_idx])
-    return pos_instances, neg_instances, corruption_positions
+        for gtemplate_idx in range(len(metapath_templates)):
+            pos_instances[gtemplate_idx], \
+            neg_instances[gtemplate_idx] = IMDB_DBLP_ACM_graphlet_instance_sampler(
+                dataset=ds,
+                gtemplate=metapath_templates[gtemplate_idx],
+                n=args.instances_per_template,
+                corruption_positions=corruption_positions[gtemplate_idx])
+        return pos_instances, neg_instances, corruption_positions
 
 
 def label_dict_to_metadata(label_dict: dict):

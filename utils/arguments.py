@@ -37,6 +37,8 @@ def model_run_argparse():
                         help='whether to use the default unsupervised learning loss - the triplet loss - as the base loss')
     parser.add_argument('--cocluster_loss', action='store_true',
                         help='whether to use additional co-clustering loss')
+    parser.add_argument('--multilinear_graphlets', type=str2bool, default=False,
+                        help='whether to use multilinear graphlets in the coclustering loss. Default False (=metapaths are used)')
     parser.add_argument('--corruption_method', type=str, default='random',
                         help='method of positive instance corruption')
     parser.add_argument('--instances_per_template', type=int, default=50000,

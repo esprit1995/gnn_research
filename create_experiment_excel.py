@@ -8,7 +8,7 @@ import warnings
 from termcolor import cprint
 from pathlib import Path
 
-AVAILABLE_MODELS = ['RGCN', 'GTN', 'MAGNN',  "VGAE"]
+AVAILABLE_MODELS = ['RGCN', 'GTN', 'MAGNN',  "VGAE", "NSHE", 'HeGAN']
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--experiments_path', type=str, default=os.path.join(os.getcwd(), 'experiment_records'),
