@@ -660,7 +660,7 @@ def combine_losses_tf(l_baseline,
     if method == 'naive':
         return l_baseline + l_ccl
     elif method == 'scaled':
-        return l_baseline + l_ccl * 10 ** (int(tf_log10(l_baseline / l_ccl)))
+        return l_baseline + l_ccl * 10 ** (tf.round((tf_log10(l_baseline / l_ccl))))
     elif method == 'geom_mean':
         return tf.sqrt(l_baseline * l_ccl)
     else:

@@ -149,8 +149,8 @@ def train_vgae(args):
     # VGAE settings ##########
     output_dim = 64
     hidden_dim = 64
-    coclustering_metapaths_dict = COCLUSTERING_METAPATHS
-    corruption_positions_dict = CORRUPTION_POSITIONS
+    coclustering_metapaths_dict = COCLUSTERING_METAPATHS if not args.multilinear_graphlets else COCLUSTERING_GRAPHLETS
+    corruption_positions_dict = CORRUPTION_POSITIONS if not args.multilinear_graphlets else CORRUPTION_POSITIONS_GRAPHLETS
     # #######################
     # ========> preparing data: wrangling, sampling
     if args.from_paper == 'GTN':
@@ -185,7 +185,7 @@ def train_vgae(args):
     model = VGAE(encoder)
     model.train()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.005, weight_decay=args.weight_decay)
-
+    ccl_loss_func = push_pull_graphlet_instance_loss if args.multilinear_graphlets else push_pull_metapath_instance_loss
     # keeping track of performance vs #epochs
     epoch_num = list()
     metrics = {'nmi': list(),
@@ -212,10 +212,10 @@ def train_vgae(args):
             ccl_loss = 0
             mptemplates = list(pos_instances.keys())
             for idx in range(len(mptemplates)):
-                ccl_loss = ccl_loss + push_pull_metapath_instance_loss(pos_instances[mptemplates[idx]],
-                                                                       neg_instances[mptemplates[idx]],
-                                                                       corruption_positions[idx],
-                                                                       output)
+                ccl_loss = ccl_loss + ccl_loss_func(pos_instances=pos_instances[mptemplates[idx]],
+                                                    corrupted_instances=neg_instances[mptemplates[idx]],
+                                                    corrupted_positions=corruption_positions[idx],
+                                                    node_embeddings=output)
         loss = combine_losses(l_baseline=base_loss,
                               l_ccl=ccl_loss,
                               method=args.loss_combine_method)

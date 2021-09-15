@@ -50,7 +50,7 @@ MODELS_TO_RUN = ["HeGAN"]
 
 #  arguments that affect runs WITH COCLUSTER_LOSS=TRUE
 ALTERABLE_ARGS = {'corruption_method': ['random'],
-                  'loss_combine_method': ['naive', 'geom_mean', 'scaled'],
+                  'loss_combine_method': ['scaled'],
                   'acm_dblp_from_gtn_initial_embs': ['deepwalk'],
                   'homogeneous_VGAE': [True, False]}
 
@@ -99,21 +99,21 @@ if __name__ == '__main__':
                        color='cyan',
                        attrs=['bold'])
 
-                cprint('-->Training without cocluster loss', color='yellow')
-                setattr(args, 'cocluster_loss', False)
-                GTN_initial_embs = ['original']
-                homogeneous_VGAE = [True]
-                if from_paper == 'GTN':
-                    GTN_initial_embs.append('deepwalk')
-                if model == 'VGAE':
-                    homogeneous_VGAE.append(False)
-                for gtn_ie in GTN_initial_embs:
-                    setattr(args, 'acm_dblp_from_gtn_initial_embs', gtn_ie)
-                    for vgae_mode in homogeneous_VGAE:
-                        setattr(args, 'homogeneous_VGAE', vgae_mode)
-                        p = mp.Process(target=run_pipeline, args=(args, create_experiment_name(args, EXP_NAME_SPECIAL_NOTES)))
-                        p.start()
-                        p.join()
+                # cprint('-->Training without cocluster loss', color='yellow')
+                # setattr(args, 'cocluster_loss', False)
+                # GTN_initial_embs = ['original']
+                # homogeneous_VGAE = [True]
+                # if from_paper == 'GTN':
+                #     GTN_initial_embs.append('deepwalk')
+                # if model == 'VGAE':
+                #     homogeneous_VGAE.append(False)
+                # for gtn_ie in GTN_initial_embs:
+                #     setattr(args, 'acm_dblp_from_gtn_initial_embs', gtn_ie)
+                #     for vgae_mode in homogeneous_VGAE:
+                #         setattr(args, 'homogeneous_VGAE', vgae_mode)
+                #         p = mp.Process(target=run_pipeline, args=(args, create_experiment_name(args, EXP_NAME_SPECIAL_NOTES)))
+                #         p.start()
+                #         p.join()
 
 
                 cprint('-->Training with cocluster loss', color='yellow')
