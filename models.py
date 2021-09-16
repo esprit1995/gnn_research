@@ -15,7 +15,7 @@ from downstream_tasks.evaluation_funcs import evaluate_clu_cla_GTN_NSHE_datasets
 from torch_geometric.nn.conv import RGCNConv, GCNConv
 from torch_geometric.typing import OptTensor, Adj
 
-from utils.losses import push_pull_metapath_instance_loss_tf
+from utils.losses import push_pull_metapath_instance_loss_tf, push_pull_graphlet_instance_loss_tf
 from utils.tools import combine_losses, combine_losses_tf
 
 from conv import GTLayer
@@ -485,7 +485,7 @@ class Generator:
 
 class Discriminator:
     def __init__(self, n_node, n_relation, node_emd_init, relation_emd_init, config, cocluster_lambda,
-                 loss_combine_method, hidden_dim=-1, pos_instances=None, neg_instances=None, corruption_pos=None):
+                 loss_combine_method, multilinear_graphlets, hidden_dim=-1, pos_instances=None, neg_instances=None, corruption_pos=None):
         self.cocluster_lambda = cocluster_lambda
         self.n_node = n_node
         self.n_relation = n_relation
@@ -494,6 +494,7 @@ class Discriminator:
         self.emd_dim = node_emd_init.shape[1]
         self.hidden_dim = self.emd_dim if hidden_dim == -1 else hidden_dim
         self.loss_combine_method = loss_combine_method
+        self.multilinear_graphlets = multilinear_graphlets
 
         # with tf.variable_scope('discriminator'):
         self.dis_w_1 = tf.get_variable(name='dis_w',
@@ -564,17 +565,19 @@ class Discriminator:
             tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.zeros_like(self.neg_score_2), logits=self.neg_score_2))
 
         # cocluster loss
+        ccl_loss_func = push_pull_graphlet_instance_loss_tf if self.multilinear_graphlets else push_pull_metapath_instance_loss_tf
         if neg_instances is None or pos_instances is None or corruption_pos is None:
             self.cocluster_loss = 0
             self.loss = self.pos_loss + self.neg_loss_1 + self.neg_loss_2
         else:
             mptemplates = list(pos_instances.keys())
+            self.cocluster_loss = 0
             for idx in range(len(mptemplates)):
-                self.cocluster_loss = self.cocluster_lambda * push_pull_metapath_instance_loss_tf(
-                    pos_instances[mptemplates[idx]],
-                    neg_instances[mptemplates[idx]],
-                    corruption_pos[idx],
-                    self.node_embedding_matrix)
+                self.cocluster_loss = self.cocluster_loss + ccl_loss_func(
+                    pos_instances=pos_instances[mptemplates[idx]],
+                    corrupted_instances=neg_instances[mptemplates[idx]],
+                    corrupted_positions=corruption_pos[idx],
+                    node_embeddings=self.node_embedding_matrix)
             base_loss = self.pos_loss + self.neg_loss_1 + self.neg_loss_2
             self.loss = combine_losses_tf(l_baseline=base_loss,
                                           l_ccl=self.cocluster_loss,
@@ -632,7 +635,7 @@ class HeGAN:
         # ----------------------------------
         self.build_generator()
         self.build_discriminator(pos_instances, neg_instances, corruption_positions,
-                                 args.type_lambda, args.loss_combine_method)
+                                 args.type_lambda, args.loss_combine_method, args.multilinear_graphlets)
 
         self.saver = tf.train.Saver()
 
@@ -670,7 +673,7 @@ class HeGAN:
                                    config=self.config_hegan)
 
     def build_discriminator(self, pos_instances=None, neg_instances=None, corruption_pos=None,
-                            cocluster_lambda=0.1, loss_combine_method='naive'):
+                            cocluster_lambda=0.1, loss_combine_method='naive', multilinear_graphlets=True):
         self.discriminator = Discriminator(n_node=self.n_node,
                                            n_relation=self.n_relation,
                                            node_emd_init=self.node_embed_init_d,
@@ -681,7 +684,8 @@ class HeGAN:
                                            corruption_pos=corruption_pos,
                                            cocluster_lambda=cocluster_lambda,
                                            config=self.config_hegan,
-                                           loss_combine_method=loss_combine_method
+                                           loss_combine_method=loss_combine_method,
+                                           multilinear_graphlets=multilinear_graphlets
                                            )
 
     def train(self):

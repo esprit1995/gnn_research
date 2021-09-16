@@ -250,8 +250,8 @@ def train_gtn(args):
     norm = 'true'
     model_params = {'node_dim': node_dim, 'num_channels': num_channels,
                     'num_layers': num_layers, 'norm': norm}
-    coclustering_metapaths_dict = COCLUSTERING_METAPATHS
-    corruption_positions_dict = CORRUPTION_POSITIONS
+    coclustering_metapaths_dict = COCLUSTERING_METAPATHS if not args.multilinear_graphlets else COCLUSTERING_GRAPHLETS
+    corruption_positions_dict = CORRUPTION_POSITIONS if not args.multilinear_graphlets else CORRUPTION_POSITIONS_GRAPHLETS
     setattr(args, 'model_params', model_params)
     # #######################
     # ---> get necessary data structures
@@ -286,6 +286,8 @@ def train_gtn(args):
                 norm=norm)
     model.train()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.005, weight_decay=args.weight_decay)
+    ccl_loss_func = push_pull_graphlet_instance_loss if args.multilinear_graphlets else push_pull_metapath_instance_loss
+
     # keeping track of performance vs #epochs
     epoch_num = list()
     metrics = {'nmi': list(),
@@ -308,10 +310,10 @@ def train_gtn(args):
             mptemplates = list(pos_instances.keys())
             ccl_loss = 0
             for idx in range(len(mptemplates)):
-                ccl_loss = ccl_loss + push_pull_metapath_instance_loss(pos_instances[mptemplates[idx]],
-                                                                       neg_instances[mptemplates[idx]],
-                                                                       corruption_positions[idx],
-                                                                       output)
+                ccl_loss = ccl_loss + ccl_loss_func(pos_instances=pos_instances[mptemplates[idx]],
+                                                    corrupted_instances=neg_instances[mptemplates[idx]],
+                                                    corrupted_positions=corruption_positions[idx],
+                                                    node_embeddings=output)
         loss = combine_losses(l_baseline=base_loss,
                               l_ccl=ccl_loss,
                               method=args.loss_combine_method)
@@ -358,8 +360,8 @@ def train_nshe(args):
     model_params = {'conv_method': hp.conv_method, 'cla_layers': hp.cla_layers,
                     'ns_emb_mode': hp.ns_emb_mode, 'cla_method': hp.cla_method,
                     'norm_emb_flag': hp.norm_emb_flag, 'size': hp.size, 'beta': hp.beta}
-    coclustering_metapaths_dict = COCLUSTERING_METAPATHS
-    corruption_positions_dict = CORRUPTION_POSITIONS
+    coclustering_metapaths_dict = COCLUSTERING_METAPATHS if not args.multilinear_graphlets else COCLUSTERING_GRAPHLETS
+    corruption_positions_dict = CORRUPTION_POSITIONS if not args.multilinear_graphlets else CORRUPTION_POSITIONS_GRAPHLETS
     setattr(args, 'model_params', model_params)
     # #######################
     # ---> get necessary data structures
@@ -385,6 +387,8 @@ def train_nshe(args):
     model = NSHE(g, hp)
     model.train()
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    ccl_loss_func = push_pull_graphlet_instance_loss if args.multilinear_graphlets else push_pull_metapath_instance_loss
+
     # keeping track of performance vs #epochs
     epoch_num = list()
     metrics = {'nmi': list(),
@@ -412,10 +416,10 @@ def train_nshe(args):
             mptemplates = list(pos_instances.keys())
             ccl_loss = 0
             for idx in range(len(mptemplates)):
-                ccl_loss = ccl_loss + push_pull_metapath_instance_loss(pos_instances[mptemplates[idx]],
-                                                                       neg_instances[mptemplates[idx]],
-                                                                       corruption_positions[idx],
-                                                                       output)
+                ccl_loss = ccl_loss + ccl_loss_func(pos_instances=pos_instances[mptemplates[idx]],
+                                                    corrupted_instances=neg_instances[mptemplates[idx]],
+                                                    corrupted_positions=corruption_positions[idx],
+                                                    node_embeddings=output)
         loss = combine_losses(l_baseline=base_loss,
                               l_ccl=ccl_loss,
                               method=args.loss_combine_method)
@@ -459,8 +463,8 @@ def train_magnn(args):
                     'rtype': rtype, 'sampling': sampling}
     setattr(args, 'model_params', model_params)
 
-    coclustering_metapaths_dict = COCLUSTERING_METAPATHS
-    corruption_positions_dict = CORRUPTION_POSITIONS
+    coclustering_metapaths_dict = COCLUSTERING_METAPATHS if not args.multilinear_graphlets else COCLUSTERING_GRAPHLETS
+    corruption_positions_dict = CORRUPTION_POSITIONS if not args.multilinear_graphlets else CORRUPTION_POSITIONS_GRAPHLETS
     # #######################
     # ---> get necessary data structures
     if args.from_paper in ['NSHE', 'GTN']:
@@ -487,7 +491,7 @@ def train_magnn(args):
                   ntype_features, rtype)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     model.train()
-
+    ccl_loss_func = push_pull_graphlet_instance_loss if args.multilinear_graphlets else push_pull_metapath_instance_loss
     # keeping track of performance vs #epochs
     epoch_num = list()
     metrics = {'nmi': list(),
@@ -530,10 +534,10 @@ def train_magnn(args):
             mptemplates = list(pos_instances.keys())
             ccl_loss = 0
             for idx in range(len(mptemplates)):
-                ccl_loss = ccl_loss + push_pull_metapath_instance_loss(pos_instances[mptemplates[idx]],
-                                                                       neg_instances[mptemplates[idx]],
-                                                                       corruption_positions[idx],
-                                                                       output)
+                ccl_loss = ccl_loss + ccl_loss_func(pos_instances=pos_instances[mptemplates[idx]],
+                                                    corrupted_instances=neg_instances[mptemplates[idx]],
+                                                    corrupted_positions=corruption_positions[idx],
+                                                    node_embeddings=output)
         loss = combine_losses(l_baseline=base_loss,
                               l_ccl=ccl_loss,
                               method=args.loss_combine_method)
@@ -581,8 +585,8 @@ def train_hegan(args):
                     'n_sample': n_sample, 'lr_gen': lr_gen, 'lr_dis': lr_dis,
                     'n_epoch': n_epoch, 'saves_step': saves_step, 'sig': sig,
                     'd_epoch': d_epoch, 'g_epoch': g_epoch, 'hidden_dim': hidden_dim}
-    coclustering_metapaths_dict = COCLUSTERING_METAPATHS
-    corruption_positions_dict = CORRUPTION_POSITIONS
+    coclustering_metapaths_dict = COCLUSTERING_METAPATHS if not args.multilinear_graphlets else COCLUSTERING_GRAPHLETS
+    corruption_positions_dict = CORRUPTION_POSITIONS if not args.multilinear_graphlets else CORRUPTION_POSITIONS_GRAPHLETS
     setattr(args, 'model_params', model_params)
     # #######################
     # ---> get necessary data structures

@@ -235,6 +235,29 @@ def push_pull_graphlet_instance_loss(pos_instances: list, corrupted_instances: l
                                             node_embeddings=node_embeddings)
 
 
+def push_pull_graphlet_instance_loss_tf(pos_instances: list, corrupted_instances: list,
+                                     node_embeddings: torch.tensor, corrupted_positions=None):
+    """
+    compute the loss value for a multilinear graphlet
+    :param pos_instances: list of positive graphlet instances
+    :param corrupted_instances: list of corrupted graphlet instances
+    :param node_embeddings: current node embeddings, torch tensor
+    :param corrupted_positions: dummy placeholder to make the loss signatures match with metapath loss
+    :return:loss value (torch tensor)
+    """
+    linear_pos_instances = [stretch_graphlet(elem, negative=False) for elem in pos_instances]
+    linear_cor_instances_corrpos = [stretch_graphlet(elem, negative=True) for elem in corrupted_instances]
+    linear_cor_instances = [elem[0] for elem in linear_cor_instances_corrpos]
+    corr_positions = [elem[1] for elem in linear_cor_instances_corrpos]
+
+    assert len(set(corr_positions)) == 1, \
+        "push_pull_graphlet_instance_loss(): different corruption positions for the same graphlet template detected!"
+    corr_pos = corr_positions[0]
+    return push_pull_metapath_instance_loss_tf(pos_instances=linear_pos_instances,
+                                               corrupted_instances=linear_cor_instances,
+                                               corrupted_positions=corr_pos,
+                                               node_embeddings=node_embeddings)
+
 def NSHE_network_schema_loss(predict, ns_label):
     BCE_loss = torch.nn.BCELoss()
     return BCE_loss(predict, ns_label)
