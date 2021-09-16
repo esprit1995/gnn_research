@@ -15,6 +15,39 @@ from downstream_tasks.evaluation_funcs import evaluate_clu_cla_GTN_NSHE_datasets
     evaluate_link_prediction_GTN_NSHE_datasets
 from utils.MAGNN_utils import nega_sampling, Batcher, prepare_minibatch
 
+
+CCL_TEMPLATE_BASE = {'metapaths': {'short': {'ACM': [('0', '1', '0'), ('2', '0', '1')],
+                                             'DBLP': [('0', '1', '2'), ('0', '1', '0'), ('1', '2', '1')]},
+                                   'mixed': {'ACM': [('0', '1', '0', '2'), ('2', '0', '1'), ('1', '0', '2', '0', '1')],
+                                             'DBLP': [('0', '1', '2'), ('0', '1', '0'), ('1', '2', '1'), ('0', '1', '2', '1', '0')]}},
+                     'graphlets': {'short': {'ACM': [{'main': ['2', '0', '1'],
+                                                      'sub_paths': {1: [['0', '1', '0']]}}],
+                                             'DBLP': [{'main': ['0', '1', '2'],
+                                                       'sub_paths': {1: [['1', '0'], ['1', '0']],
+                                                                     2: [['2', '1'], ['2', '1']]}}]},
+                                   'mixed': {'ACM': [{'main': ['1', '0', '2', '0', '1'],
+                                                      'sub_paths': {2: [['2', '0', '1']],
+                                                                    1: [['0', '1', '0', '2']]}}],
+                                             'DBLP': [{'main': ['0', '1', '2', '1', '0'],
+                                                       'sub_paths': {2: [['2', '1', '0'], ['2', '1'], ['2', '1']],
+                                                                     1: [['1', '0'], ['1', '0']]}}]}}}
+
+CCL_CORRUPTION_POSITIONS = {'metapaths': {'short': {'ACM': [(1, 2), (2, 2)],
+                                                    'DBLP': [(1, 1), (1, 2), (2, 2)]},
+                                          'mixed': {'ACM': [(1, 2), (2, 2), (1, 3)],
+                                                    'DBLP': [(1, 1), (1, 2), (2, 2), (2, 4)]}},
+                            'graphlets': {'short': {'ACM': [{'main': (1, 2),
+                                                             'sub_paths': {1: [(0, 1)]}}],
+                                                    'DBLP': [{'main': (1, 2),
+                                                              'sub_paths': {2: [(0, 0), (0, 0)],
+                                                                            1: [(0, 0), (0, 0)]}}]},
+                                          'mixed': {'ACM': [{'main': (1, 3),
+                                                             'sub_paths': {2: [(0, 1)],
+                                                                           1: [(0, 1)]}}],
+                                                    'DBLP': [{'main': (2, 4),
+                                                              'sub_paths': {2: [(0, 0), (0, 0), (0, 0)],
+                                                                            1: [(1, 1), (1, 1)]}}]}}}
+
 # a collection of shorter metapaths
 # COCLUSTERING_METAPATHS = {'ACM': [('0', '1', '0', '2'), ('2', '0', '1')],
 #                           'DBLP': [('0', '1', '2'), ('0', '1', '0'), ('1', '2', '1')]}
@@ -54,8 +87,9 @@ def train_rgcn(args):
     output_dim = 64
     hidden_dim = 64
     num_layers = 2
-    coclustering_metapaths_dict = COCLUSTERING_METAPATHS if not args.multilinear_graphlets else COCLUSTERING_GRAPHLETS
-    corruption_positions_dict = CORRUPTION_POSITIONS if not args.multilinear_graphlets else CORRUPTION_POSITIONS_GRAPHLETS
+    mode = 'graphlets' if args.multilinear_graphlets else 'metapaths'
+    coclustering_metapaths_dict = CCL_TEMPLATE_BASE[mode][args.template_length]
+    corruption_positions_dict = CCL_CORRUPTION_POSITIONS[mode][args.template_length]
     # #######################
 
     # ========> preparing data: wrangling, sampling
@@ -149,8 +183,9 @@ def train_vgae(args):
     # VGAE settings ##########
     output_dim = 64
     hidden_dim = 64
-    coclustering_metapaths_dict = COCLUSTERING_METAPATHS if not args.multilinear_graphlets else COCLUSTERING_GRAPHLETS
-    corruption_positions_dict = CORRUPTION_POSITIONS if not args.multilinear_graphlets else CORRUPTION_POSITIONS_GRAPHLETS
+    mode = 'graphlets' if args.multilinear_graphlets else 'metapaths'
+    coclustering_metapaths_dict = CCL_TEMPLATE_BASE[mode][args.template_length]
+    corruption_positions_dict = CCL_CORRUPTION_POSITIONS[mode][args.template_length]
     # #######################
     # ========> preparing data: wrangling, sampling
     if args.from_paper == 'GTN':
@@ -250,8 +285,9 @@ def train_gtn(args):
     norm = 'true'
     model_params = {'node_dim': node_dim, 'num_channels': num_channels,
                     'num_layers': num_layers, 'norm': norm}
-    coclustering_metapaths_dict = COCLUSTERING_METAPATHS if not args.multilinear_graphlets else COCLUSTERING_GRAPHLETS
-    corruption_positions_dict = CORRUPTION_POSITIONS if not args.multilinear_graphlets else CORRUPTION_POSITIONS_GRAPHLETS
+    mode = 'graphlets' if args.multilinear_graphlets else 'metapaths'
+    coclustering_metapaths_dict = CCL_TEMPLATE_BASE[mode][args.template_length]
+    corruption_positions_dict = CCL_CORRUPTION_POSITIONS[mode][args.template_length]
     setattr(args, 'model_params', model_params)
     # #######################
     # ---> get necessary data structures
@@ -360,8 +396,9 @@ def train_nshe(args):
     model_params = {'conv_method': hp.conv_method, 'cla_layers': hp.cla_layers,
                     'ns_emb_mode': hp.ns_emb_mode, 'cla_method': hp.cla_method,
                     'norm_emb_flag': hp.norm_emb_flag, 'size': hp.size, 'beta': hp.beta}
-    coclustering_metapaths_dict = COCLUSTERING_METAPATHS if not args.multilinear_graphlets else COCLUSTERING_GRAPHLETS
-    corruption_positions_dict = CORRUPTION_POSITIONS if not args.multilinear_graphlets else CORRUPTION_POSITIONS_GRAPHLETS
+    mode = 'graphlets' if args.multilinear_graphlets else 'metapaths'
+    coclustering_metapaths_dict = CCL_TEMPLATE_BASE[mode][args.template_length]
+    corruption_positions_dict = CCL_CORRUPTION_POSITIONS[mode][args.template_length]
     setattr(args, 'model_params', model_params)
     # #######################
     # ---> get necessary data structures
@@ -463,8 +500,9 @@ def train_magnn(args):
                     'rtype': rtype, 'sampling': sampling}
     setattr(args, 'model_params', model_params)
 
-    coclustering_metapaths_dict = COCLUSTERING_METAPATHS if not args.multilinear_graphlets else COCLUSTERING_GRAPHLETS
-    corruption_positions_dict = CORRUPTION_POSITIONS if not args.multilinear_graphlets else CORRUPTION_POSITIONS_GRAPHLETS
+    mode = 'graphlets' if args.multilinear_graphlets else 'metapaths'
+    coclustering_metapaths_dict = CCL_TEMPLATE_BASE[mode][args.template_length]
+    corruption_positions_dict = CCL_CORRUPTION_POSITIONS[mode][args.template_length]
     # #######################
     # ---> get necessary data structures
     if args.from_paper in ['NSHE', 'GTN']:
@@ -585,8 +623,9 @@ def train_hegan(args):
                     'n_sample': n_sample, 'lr_gen': lr_gen, 'lr_dis': lr_dis,
                     'n_epoch': n_epoch, 'saves_step': saves_step, 'sig': sig,
                     'd_epoch': d_epoch, 'g_epoch': g_epoch, 'hidden_dim': hidden_dim}
-    coclustering_metapaths_dict = COCLUSTERING_METAPATHS if not args.multilinear_graphlets else COCLUSTERING_GRAPHLETS
-    corruption_positions_dict = CORRUPTION_POSITIONS if not args.multilinear_graphlets else CORRUPTION_POSITIONS_GRAPHLETS
+    mode = 'graphlets' if args.multilinear_graphlets else 'metapaths'
+    coclustering_metapaths_dict = CCL_TEMPLATE_BASE[mode][args.template_length]
+    corruption_positions_dict = CCL_CORRUPTION_POSITIONS[mode][args.template_length]
     setattr(args, 'model_params', model_params)
     # #######################
     # ---> get necessary data structures

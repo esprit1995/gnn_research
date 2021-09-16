@@ -39,6 +39,8 @@ def model_run_argparse():
                         help='whether to use additional co-clustering loss')
     parser.add_argument('--multilinear_graphlets', type=str2bool, default=False,
                         help='whether to use multilinear graphlets in the coclustering loss. Default False (=metapaths are used)')
+    parser.add_argument('--template_length', type=str, default='short',
+                        help='which template length to use. default is "short", also "mixed" is possible')
     parser.add_argument('--corruption_method', type=str, default='random',
                         help='method of positive instance corruption')
     parser.add_argument('--instances_per_template', type=int, default=50000,
